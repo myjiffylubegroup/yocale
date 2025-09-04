@@ -1,8 +1,4 @@
-# requirements.txt
-requests==2.31.0
-pandas==2.0.3
-supabase==2.0.4
-python-dotenv==1.0.0
+
 
 # ===================================
 # main.py - Main data extraction script
