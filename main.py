@@ -1,8 +1,4 @@
 
-# ===================================
-# main.py - Main data extraction script
-# ===================================
-
 import os
 import requests
 import pandas as pd
@@ -30,10 +26,20 @@ class CloudAppointmentExtractor:
         # Initialize requests session
         self.session = requests.Session()
         
-        # Add any auth headers if needed
+        # Add authentication - try multiple methods
         auth_token = os.environ.get('KIBANA_AUTH_TOKEN')
-        if auth_token:
+        session_cookie = os.environ.get('KIBANA_SESSION_COOKIE')
+        
+        if session_cookie:
+            # Use session cookie authentication
+            self.session.cookies.set('sid', session_cookie, domain='.aws.elastic-cloud.com')
+            logger.info("Using session cookie authentication")
+        elif auth_token:
+            # Use bearer token authentication
             self.session.headers.update({'Authorization': f'Bearer {auth_token}'})
+            logger.info("Using bearer token authentication")
+        else:
+            logger.warning("No authentication method provided")
     
     def extract_daily_appointments(self, target_date=None):
         """Extract appointments for a specific date"""
