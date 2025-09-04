@@ -1,4 +1,4 @@
-name: Daily Appointment Data Extraction
+name: Daily Appointment Data Scraping
 
 on:
   schedule:
@@ -7,7 +7,7 @@ on:
   workflow_dispatch: # Allow manual triggering
 
 jobs:
-  extract-appointments:
+  scrape-appointments:
     runs-on: ubuntu-latest
     
     steps:
@@ -30,17 +30,32 @@ jobs:
         python -m pip install --upgrade pip
         pip install -r requirements.txt
         
-    - name: Run daily extraction
+    - name: Install Playwright browsers
+      run: |
+        playwright install chromium
+        
+    - name: Run daily scraping
       env:
         KIBANA_BASE_URL: ${{ secrets.KIBANA_BASE_URL }}
-        KIBANA_AUTH_TOKEN: ${{ secrets.KIBANA_AUTH_TOKEN }}
+        KIBANA_USERNAME: ${{ secrets.KIBANA_USERNAME }}
+        KIBANA_PASSWORD: ${{ secrets.KIBANA_PASSWORD }}
         SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
         SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
-      run: python main.py
+      run: python scraper.py
       
+    - name: Upload debug artifacts on failure
+      if: failure()
+      uses: actions/upload-artifact@v3
+      with:
+        name: debug-screenshots
+        path: |
+          *.png
+          *.html
+        retention-days: 7
+        
     - name: Notify on failure
       if: failure()
       uses: actions/github-script@v6
       with:
         script: |
-          core.setFailed('Daily appointment extraction failed')
+          core.setFailed('Daily appointment scraping failed')
