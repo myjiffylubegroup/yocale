@@ -1,4 +1,8 @@
 
+# ===================================
+# main.py - Main data extraction script
+# ===================================
+
 import os
 import requests
 import pandas as pd
