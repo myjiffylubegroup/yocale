@@ -36,11 +36,10 @@ jobs:
         
     - name: Run daily scraping
       env:
-        KIBANA_BASE_URL: ${{ secrets.KIBANA_BASE_URL }}
-        KIBANA_USERNAME: ${{ secrets.KIBANA_USERNAME }}
-        KIBANA_PASSWORD: ${{ secrets.KIBANA_PASSWORD }}
-        SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-        SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+      KIBANA_BASE_URL: ${{ secrets.KIBANA_BASE_URL }}
+      KIBANA_SESSION_COOKIE: ${{ secrets.KIBANA_SESSION_COOKIE }}
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
       run: python scraper.py
       
     - name: Upload debug artifacts on failure
