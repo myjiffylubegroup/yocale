@@ -45,7 +45,7 @@ jobs:
       
     - name: Upload debug artifacts on failure
       if: failure()
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: debug-screenshots
         path: |
@@ -55,7 +55,7 @@ jobs:
         
     - name: Notify on failure
       if: failure()
-      uses: actions/github-script@v6
+      uses: actions/github-script@v7
       with:
         script: |
           core.setFailed('Daily appointment scraping failed')
