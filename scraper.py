@@ -571,8 +571,8 @@ class KibanaWebScraper:
             page = await context.new_page()
             
             try:
-                # Login to Kibana
-                await self.login_to_kibana(page)
+                # Set up authenticated session using cookie instead of login
+                await self.setup_authenticated_session(page)
                 
                 # Navigate to discover page with 15-day data
                 await self.navigate_to_discover(page, target_date)
