@@ -1,0 +1,295 @@
+# .github/workflows/daily-appointments.yml
+name: Daily Appointment Data Extraction
+
+on:
+  schedule:
+    # Run every day at 7:00 AM UTC (adjust timezone as needed)
+    - cron: '0 7 * * *'
+  workflow_dispatch: # Allow manual triggering
+
+jobs:
+  extract-appointments:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+        
+    - name: Cache dependencies
+      uses: actions/cache@v3
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}
+        
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        
+    - name: Run daily extraction
+      env:
+        KIBANA_BASE_URL: ${{ secrets.KIBANA_BASE_URL }}
+        KIBANA_AUTH_TOKEN: ${{ secrets.KIBANA_AUTH_TOKEN }}
+        SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+        SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+      run: python main.py
+      
+    - name: Notify on failure
+      if: failure()
+      uses: actions/github-script@v6
+      with:
+        script: |
+          core.setFailed('Daily appointment extraction failed')
+
+---
+
+# .github/workflows/test-extraction.yml
+name: Test Appointment Extraction
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test-extraction:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+        
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        
+    - name: Test extraction (dry run)
+      env:
+        KIBANA_BASE_URL: ${{ secrets.KIBANA_BASE_URL }}
+        KIBANA_AUTH_TOKEN: ${{ secrets.KIBANA_AUTH_TOKEN }}
+        SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+        SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+      run: |
+        echo "Running test extraction..."
+        python -c "
+        from main import CloudAppointmentExtractor
+        import os
+        
+        # Test connection and data extraction
+        extractor = CloudAppointmentExtractor()
+        print('Testing Kibana connection...')
+        df = extractor.extract_daily_appointments()
+        print(f'Retrieved {len(df)} records')
+        print('Test completed successfully')
+        "
+
+---
+
+# supabase/migrations/001_create_appointments_table.sql
+-- Create the daily_appointments table
+CREATE TABLE IF NOT EXISTS daily_appointments (
+    id BIGSERIAL PRIMARY KEY,
+    booking_id TEXT NOT NULL,
+    customer_name TEXT,
+    email TEXT,
+    service_type TEXT,
+    appointment_date DATE,
+    appointment_time TIME,
+    appointment_time_12h TEXT,
+    appointment_datetime TIMESTAMPTZ,
+    location_name TEXT,
+    location_id TEXT,
+    status TEXT,
+    extracted_at TIMESTAMPTZ DEFAULT NOW(),
+    data_date DATE NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW(),
+    
+    -- Unique constraint to prevent duplicates
+    UNIQUE(booking_id, data_date)
+);
+
+-- Create indexes for better performance
+CREATE INDEX IF NOT EXISTS idx_daily_appointments_date ON daily_appointments(appointment_date);
+CREATE INDEX IF NOT EXISTS idx_daily_appointments_location ON daily_appointments(location_name);
+CREATE INDEX IF NOT EXISTS idx_daily_appointments_status ON daily_appointments(status);
+CREATE INDEX IF NOT EXISTS idx_daily_appointments_data_date ON daily_appointments(data_date);
+
+-- Enable Row Level Security (optional)
+ALTER TABLE daily_appointments ENABLE ROW LEVEL SECURITY;
+
+-- Create a policy for authenticated users (adjust as needed)
+CREATE POLICY "Allow full access to authenticated users" ON daily_appointments
+    FOR ALL USING (auth.role() = 'authenticated');
+
+-- Add comments for documentation
+COMMENT ON TABLE daily_appointments IS 'Daily appointment data extracted from Yocale via Kibana';
+COMMENT ON COLUMN daily_appointments.booking_id IS 'Unique booking identifier from Yocale';
+COMMENT ON COLUMN daily_appointments.data_date IS 'The date this data represents (not when extracted)';
+COMMENT ON COLUMN daily_appointments.extracted_at IS 'When this record was extracted from the source system';
+
+---
+
+# docker-compose.yml (for local testing)
+version: '3.8'
+
+services:
+  supabase-db:
+    image: postgres:15
+    environment:
+      POSTGRES_DB: postgres
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  appointment-extractor:
+    build: .
+    environment:
+      - KIBANA_BASE_URL=${KIBANA_BASE_URL}
+      - KIBANA_AUTH_TOKEN=${KIBANA_AUTH_TOKEN}
+      - SUPABASE_URL=${SUPABASE_URL}
+      - SUPABASE_ANON_KEY=${SUPABASE_ANON_KEY}
+    depends_on:
+      - supabase-db
+
+volumes:
+  postgres_data:
+
+---
+
+# Dockerfile (for Render deployment)
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy requirements and install Python dependencies
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy application code
+COPY . .
+
+# Create non-root user
+RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app
+USER appuser
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
+    CMD curl -f http://localhost:8000/health || exit 1
+
+# Default command (can be overridden)
+CMD ["python", "main.py"]
+
+---
+
+# .env.example
+# Copy this to .env and fill in your values
+
+# Kibana Configuration
+KIBANA_BASE_URL=https://your-kibana-instance.com/s/your-space
+KIBANA_AUTH_TOKEN=your_kibana_auth_token_if_needed
+
+# Supabase Configuration  
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_ANON_KEY=your_supabase_anon_key
+
+# Optional: Email notifications
+NOTIFICATION_EMAIL=your-email@example.com
+
+---
+
+# README.md
+# Daily Appointment Data Extraction System
+
+This system automatically extracts daily appointment data from Yocale (via Kibana) and stores it in Supabase for dashboard consumption.
+
+## Architecture
+
+- **GitHub Actions**: Scheduled daily runs at 7 AM UTC
+- **Supabase**: PostgreSQL database for data storage
+- **Render** (optional): Web dashboard hosting
+- **Python**: Data extraction and processing
+
+## Setup Instructions
+
+### 1. Supabase Setup
+
+1. Create a new Supabase project at https://supabase.com
+2. Go to Settings > API and copy:
+   - Project URL
+   - Anon/public key
+3. Run the migration in SQL Editor:
+   ```sql
+   -- Copy the migration from supabase/migrations/001_create_appointments_table.sql
+   ```
+
+### 2. GitHub Repository Setup
+
+1. Fork/create this repository
+2. Go to Settings > Secrets and Variables > Actions
+3. Add these secrets:
+   - `KIBANA_BASE_URL`: Your Kibana base URL
+   - `KIBANA_AUTH_TOKEN`: Authentication token (if needed)
+   - `SUPABASE_URL`: Your Supabase project URL
+   - `SUPABASE_ANON_KEY`: Your Supabase anon key
+
+### 3. Testing
+
+1. Go to Actions tab in GitHub
+2. Run "Test Appointment Extraction" workflow manually
+3. Check the logs to ensure everything works
+
+### 4. Production Deployment
+
+The workflow will run automatically every day at 7 AM UTC. You can:
+- Modify the cron schedule in `.github/workflows/daily-appointments.yml`
+- Run manually using "workflow_dispatch"
+- Monitor in the Actions tab
+
+## Data Structure
+
+The system extracts these fields:
+- Customer Name
+- Email
+- Service Type  
+- Appointment Date/Time
+- Location
+- Status
+- Booking ID
+
+## Monitoring
+
+- Check GitHub Actions for daily run status
+- View data in Supabase dashboard
+- Set up email notifications for failures
+
+## Local Development
+
+1. Copy `.env.example` to `.env` and fill in values
+2. Install dependencies: `pip install -r requirements.txt`
+3. Run: `python main.py`
+
+## Optional: Web Dashboard
+
+Deploy to Render for a web interface to view the data:
+1. Connect your GitHub repo to Render
+2. Deploy as a Web Service
+3. Set environment variables in Render dashboard
