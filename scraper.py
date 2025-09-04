@@ -1,3 +1,4 @@
+# scraper.py - Web scraping solution
 import os
 import asyncio
 import pandas as pd
@@ -29,68 +30,224 @@ class KibanaWebScraper:
         logger.info("Navigating to Kibana login page...")
         
         # Go to main Kibana URL - it should redirect to login
-        await page.goto(self.kibana_base_url)
+        await page.goto(self.kibana_base_url, timeout=30000)
         
-        # Wait for login form to appear
+        # Take screenshot for debugging
+        await page.screenshot(path='login_page.png')
+        logger.info("Took screenshot of login page")
+        
+        # Wait for page to load
         try:
-            # Look for various login form selectors
-            await page.wait_for_selector('input[type="email"], input[name="username"], input[data-test-subj="loginUsername"]', timeout=10000)
+            logger.info("Waiting for page to fully load...")
+            await page.wait_for_load_state('networkidle', timeout=20000)
             
-            # Fill in username/email
+            # Check if this is the Elastic Cloud login selection page
+            elasticsearch_login_selectors = [
+                'text="Log in with Elasticsearch"',
+                ':has-text("Log in with Elasticsearch")',
+                'button:has-text("Elasticsearch")',
+                '[data-test-subj="loginCard-elasticsearch"]',
+                '.loginCard:has-text("Elasticsearch")'
+            ]
+            
+            elasticsearch_button = None
+            for selector in elasticsearch_login_selectors:
+                try:
+                    logger.info(f"Looking for Elasticsearch login button: {selector}")
+                    elasticsearch_button = await page.wait_for_selector(selector, timeout=5000)
+                    if elasticsearch_button:
+                        logger.info(f"Found Elasticsearch login button with: {selector}")
+                        break
+                except:
+                    continue
+            
+            if elasticsearch_button:
+                logger.info("Clicking 'Log in with Elasticsearch' button")
+                await elasticsearch_button.click()
+                
+                # Wait for the actual login form to appear
+                await page.wait_for_load_state('networkidle', timeout=10000)
+                await page.screenshot(path='after_elasticsearch_click.png')
+            
+            # Now look for the actual username/password form
+            logger.info("Looking for username/password form...")
+            
+            login_selectors = [
+                'input[type="email"]',
+                'input[name="username"]', 
+                'input[name="email"]',
+                'input[data-test-subj="loginUsername"]',
+                'input[placeholder*="email"]',
+                'input[placeholder*="username"]',
+                'input[placeholder*="Username"]',
+                'input[placeholder*="Email"]',
+                '#username',
+                '#email',
+                '.login input[type="text"]',
+                'form input[type="text"]',
+                'input[type="text"]'
+            ]
+            
+            username_element = None
             username_selector = None
-            for selector in ['input[type="email"]', 'input[name="username"]', 'input[data-test-subj="loginUsername"]']:
+            
+            for selector in login_selectors:
                 try:
-                    await page.wait_for_selector(selector, timeout=2000)
-                    username_selector = selector
-                    break
+                    logger.info(f"Trying username selector: {selector}")
+                    username_element = await page.wait_for_selector(selector, timeout=3000)
+                    if username_element:
+                        username_selector = selector
+                        logger.info(f"Found username field with: {selector}")
+                        break
                 except:
                     continue
             
-            if username_selector:
-                await page.fill(username_selector, self.kibana_username)
-                logger.info("Filled username")
-            else:
-                raise Exception("Could not find username field")
-            
-            # Fill in password
-            password_selector = None
-            for selector in ['input[type="password"]', 'input[name="password"]', 'input[data-test-subj="loginPassword"]']:
+            if not username_element:
+                # Maybe we're already logged in? Check for Kibana chrome
                 try:
-                    await page.wait_for_selector(selector, timeout=2000)
-                    password_selector = selector
-                    break
+                    await page.wait_for_selector('[data-test-subj="kibanaChrome"]', timeout=5000)
+                    logger.info("Already logged in - found Kibana chrome")
+                    return
+                except:
+                    pass
+                
+                # Dump page content for debugging
+                content = await page.content()
+                with open('login_form_content.html', 'w') as f:
+                    f.write(content)
+                
+                await page.screenshot(path='no_username_field.png')
+                raise Exception("Could not find username field after clicking Elasticsearch login. Check no_username_field.png and login_form_content.html")
+            
+            # Fill username
+            await username_element.fill(self.kibana_username)
+            logger.info("Filled username field")
+            
+            # Find password field
+            password_selectors = [
+                'input[type="password"]',
+                'input[name="password"]',
+                'input[data-test-subj="loginPassword"]',
+                'input[placeholder*="password"]',
+                'input[placeholder*="Password"]',
+                '#password',
+                '.login input[type="password"]',
+                'form input[type="password"]'
+            ]
+            
+            password_element = None
+            for selector in password_selectors:
+                try:
+                    logger.info(f"Trying password selector: {selector}")
+                    password_element = await page.wait_for_selector(selector, timeout=3000)
+                    if password_element:
+                        logger.info(f"Found password field with: {selector}")
+                        break
                 except:
                     continue
-                    
-            if password_selector:
-                await page.fill(password_selector, self.kibana_password)
-                logger.info("Filled password")
-            else:
+            
+            if not password_element:
+                await page.screenshot(path='no_password_field.png')
                 raise Exception("Could not find password field")
             
-            # Click login button
-            login_button_selector = None
-            for selector in ['button[type="submit"]', 'button[data-test-subj="loginSubmit"]', 'input[type="submit"]']:
+            await password_element.fill(self.kibana_password)
+            logger.info("Filled password field")
+            
+            # Find and click login button
+            login_button_selectors = [
+                'button[type="submit"]',
+                'input[type="submit"]',
+                'button[data-test-subj="loginSubmit"]',
+                'button:has-text("Log in")',
+                'button:has-text("Sign in")',
+                'button:has-text("Login")',
+                'button:has-text("Submit")',
+                '.login button',
+                'form button[type="submit"]',
+                'form button',
+                '[role="button"]:has-text("Log")'
+            ]
+            
+            login_button = None
+            for selector in login_button_selectors:
                 try:
-                    await page.wait_for_selector(selector, timeout=2000)
-                    login_button_selector = selector
+                    logger.info(f"Trying login button selector: {selector}")
+                    login_button = await page.wait_for_selector(selector, timeout=3000)
+                    if login_button:
+                        logger.info(f"Found login button with: {selector}")
+                        break
+                except:
+                    continue
+            
+            if not login_button:
+                # Try pressing Enter instead
+                logger.info("No login button found, trying Enter key")
+                await password_element.press('Enter')
+            else:
+                await login_button.click()
+                logger.info("Clicked login button")
+            
+            # Wait for login to complete
+            logger.info("Waiting for login to complete...")
+            
+            # Look for success indicators
+            success_selectors = [
+                '[data-test-subj="kibanaChrome"]',
+                '.chrome',
+                '[data-test-subj="globalLoadingIndicator-hidden"]',
+                'nav[aria-label="Primary"]',
+                '.euiHeader',
+                '.kbnAppWrapper',
+                '[data-test-subj="kibanaChrome"] nav'
+            ]
+            
+            login_successful = False
+            for selector in success_selectors:
+                try:
+                    await page.wait_for_selector(selector, timeout=15000)
+                    logger.info(f"Login successful - found: {selector}")
+                    login_successful = True
                     break
                 except:
                     continue
-                    
-            if login_button_selector:
-                await page.click(login_button_selector)
-                logger.info("Clicked login button")
-            else:
-                raise Exception("Could not find login button")
             
-            # Wait for successful login (look for Kibana dashboard elements)
-            await page.wait_for_selector('[data-test-subj="kibanaChrome"]', timeout=15000)
+            if not login_successful:
+                # Check if we're still on login page or got an error
+                await page.screenshot(path='after_login_attempt.png')
+                
+                # Look for error messages
+                error_selectors = [
+                    '.error',
+                    '.alert',
+                    '[data-test-subj="loginErrorMessage"]',
+                    '.euiCallOut--danger',
+                    '.euiToast--danger',
+                    ':has-text("Invalid")',
+                    ':has-text("incorrect")',
+                    ':has-text("failed")'
+                ]
+                
+                for selector in error_selectors:
+                    try:
+                        error_element = await page.wait_for_selector(selector, timeout=2000)
+                        if error_element:
+                            error_text = await error_element.inner_text()
+                            raise Exception(f"Login error: {error_text}")
+                    except:
+                        continue
+                
+                # Save page content for debugging
+                content = await page.content()
+                with open('after_login_content.html', 'w') as f:
+                    f.write(content)
+                
+                raise Exception("Login may have failed - no success indicators found. Check after_login_attempt.png and after_login_content.html")
+            
             logger.info("Successfully logged into Kibana")
             
         except Exception as e:
             logger.error(f"Login failed: {e}")
-            # Take screenshot for debugging
+            # Take final screenshot for debugging
             await page.screenshot(path='login_error.png')
             raise
     
