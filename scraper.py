@@ -1,4 +1,11 @@
-
+# requirements.txt for scraper
+"""
+playwright==1.40.0
+pandas==2.0.3
+supabase==2.18.1
+python-dotenv==1.0.0
+beautifulsoup4==4.12.2
+"""
 
 # scraper.py - Web scraping solution
 import os
@@ -487,11 +494,15 @@ class KibanaWebScraper:
         
         # Convert to DataFrame
         df = pd.DataFrame(raw_appointments)
-        logger.info(f"Processing {len(df)} raw appointments")
+        logger.info(f"Processing {len(df)} raw appointments from 15-day data")
         logger.info(f"Columns found: {list(df.columns)}")
         
-        # Map common column names to standard format
+        if df.empty:
+            return df
+        
+        # Clean up column names and map to standard format
         column_mapping = {
+            'bookingId': 'booking_id',
             'client.firstName': 'first_name',
             'client.lastName': 'last_name',
             'client.email': 'email',
@@ -500,51 +511,92 @@ class KibanaWebScraper:
             'location.businessName': 'location_name',
             'location.businessId': 'location_id',
             'bookingStatus.label': 'status',
-            'bookingId': 'booking_id',
-            # Add any other mappings based on what you see
+            'isGoogleBooking': 'is_google_booking'
         }
         
-        # Apply mappings
+        # Apply mappings for available columns
         for old_col, new_col in column_mapping.items():
             if old_col in df.columns:
                 df[new_col] = df[old_col]
         
-        # Create customer name
+        # Create customer name from first and last name
         if 'first_name' in df.columns and 'last_name' in df.columns:
             df['customer_name'] = (df['first_name'].fillna('') + ' ' + df['last_name'].fillna('')).str.strip()
-        elif 'client.firstName' in df.columns and 'client.lastName' in df.columns:
-            df['customer_name'] = (df['client.firstName'].fillna('') + ' ' + df['client.lastName'].fillna('')).str.strip()
         
         # Parse appointment datetime
-        datetime_columns = ['appointment_datetime', 'startDateTime', 'utcStartDateTime']
-        for col in datetime_columns:
-            if col in df.columns:
-                try:
-                    df['appointment_datetime'] = pd.to_datetime(df[col])
-                    df['appointment_date'] = df['appointment_datetime'].dt.date
-                    df['appointment_time'] = df['appointment_datetime'].dt.strftime('%H:%M')
-                    df['appointment_time_12h'] = df['appointment_datetime'].dt.strftime('%I:%M %p')
-                    break
-                except:
-                    continue
+        if 'appointment_datetime' in df.columns:
+            try:
+                # Handle different date formats that might appear
+                df['appointment_datetime'] = pd.to_datetime(df['appointment_datetime'], errors='coerce')
+                df['appointment_date'] = df['appointment_datetime'].dt.date
+                df['appointment_time'] = df['appointment_datetime'].dt.strftime('%H:%M')
+                df['appointment_time_12h'] = df['appointment_datetime'].dt.strftime('%I:%M %p')
+                
+                # Filter for target date if specified
+                if target_date:
+                    target_date_obj = target_date.date()
+                    df = df[df['appointment_date'] == target_date_obj]
+                    logger.info(f"Filtered to {len(df)} appointments for {target_date_obj}")
+                
+            except Exception as e:
+                logger.warning(f"Error parsing appointment_datetime: {e}")
+                # If datetime parsing fails, don't filter by date
+                df['appointment_date'] = None
+                df['appointment_time'] = None
+                df['appointment_time_12h'] = None
+        
+        # Clean up booking IDs - remove any non-numeric entries
+        if 'booking_id' in df.columns:
+            df['booking_id'] = df['booking_id'].astype(str)
+            # Filter out rows where booking_id is not a valid number
+            df = df[df['booking_id'].str.isdigit()]
+        
+        # Filter out canceled appointments if desired (optional)
+        if 'status' in df.columns:
+            # Keep all statuses for now, but log the distribution
+            status_counts = df['status'].value_counts()
+            logger.info(f"Status distribution: {status_counts.to_dict()}")
         
         # Add metadata
         df['extracted_at'] = datetime.utcnow()
-        df['data_date'] = target_date.date()
+        df['data_date'] = target_date.date() if target_date else datetime.now().date()
         
-        # Select final columns
+        # Select final columns for dashboard
         final_columns = [
-            'booking_id', 'customer_name', 'email', 'service_type',
-            'appointment_date', 'appointment_time', 'appointment_time_12h',
-            'appointment_datetime', 'location_name', 'location_id', 'status',
-            'extracted_at', 'data_date'
+            'booking_id',
+            'customer_name', 
+            'email',
+            'service_type',
+            'appointment_date',
+            'appointment_time',
+            'appointment_time_12h',
+            'appointment_datetime',
+            'location_name',
+            'location_id',
+            'status',
+            'is_google_booking',
+            'extracted_at',
+            'data_date'
         ]
         
+        # Only include columns that exist
         available_columns = [col for col in final_columns if col in df.columns]
         result_df = df[available_columns] if available_columns else df
         
-        logger.info(f"Processed DataFrame shape: {result_df.shape}")
+        # Remove any completely empty rows
+        result_df = result_df.dropna(how='all')
+        
+        # Sort by appointment time if available
+        if 'appointment_datetime' in result_df.columns:
+            result_df = result_df.sort_values('appointment_datetime')
+        elif 'booking_id' in result_df.columns:
+            result_df = result_df.sort_values('booking_id')
+        
+        logger.info(f"Final processed DataFrame: {result_df.shape}")
         logger.info(f"Final columns: {list(result_df.columns)}")
+        
+        if not result_df.empty:
+            logger.info(f"Sample row: {result_df.iloc[0].to_dict()}")
         
         return result_df
     
