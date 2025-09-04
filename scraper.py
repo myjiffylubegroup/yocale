@@ -1,3 +1,5 @@
+
+
 # scraper.py - Web scraping solution
 import os
 import asyncio
@@ -256,22 +258,129 @@ class KibanaWebScraper:
         if target_date is None:
             target_date = datetime.now()
             
-        # Calculate date range for URL
-        start_date = target_date.replace(hour=0, minute=0, second=0, microsecond=0)
-        end_date = start_date + timedelta(days=1)
-        
-        # Your original discover URL with dynamic date range
-        discover_url = f"{self.kibana_base_url}/app/discover#/view/84b881a0-6b52-11f0-89e0-f9470fca93e5?_g=(filters:!(),refreshInterval:(pause:!t,value:0),time:(from:'{start_date.isoformat()}Z',to:'{end_date.isoformat()}Z'))&_a=(columns:!(bookingId,location.businessName,location.businessId,client.lastName,isGoogleBooking,offering.name,client.firstName,client.email,bookingStatus.label,startDateTime),filters:!(),index:a8e8cdc8-c993-429b-b378-d2bfa0589440,interval:auto,query:(language:kuery,query:''),sort:!(!(utcCreatedDateTime,asc)))"
-        
         logger.info(f"Navigating to discover page for {target_date.date()}")
-        await page.goto(discover_url)
         
-        # Wait for the data to load
-        await page.wait_for_selector('[data-test-subj="discoverDocTable"], .euiDataGrid', timeout=30000)
-        logger.info("Discover page loaded")
-        
-        # Wait a bit more for data to populate
-        await page.wait_for_timeout(5000)
+        try:
+            # First, let's go to the basic discover page without complex URL parameters
+            basic_discover_url = f"{self.kibana_base_url}/app/discover"
+            
+            logger.info("Navigating to basic discover page first...")
+            await page.goto(basic_discover_url, timeout=30000)
+            
+            # Wait for discover page to load
+            discover_selectors = [
+                '[data-test-subj="discoverDocTable"]',
+                '.euiDataGrid',
+                '[data-test-subj="discover-dataView-switch-link"]',
+                '.discover-app',
+                '[data-test-subj="breadcrumb first"]'
+            ]
+            
+            discover_loaded = False
+            for selector in discover_selectors:
+                try:
+                    await page.wait_for_selector(selector, timeout=10000)
+                    logger.info(f"Discover page loaded - found: {selector}")
+                    discover_loaded = True
+                    break
+                except:
+                    continue
+            
+            if not discover_loaded:
+                await page.screenshot(path='discover_not_loaded.png')
+                logger.warning("Basic discover page may not have loaded properly")
+            
+            # Take screenshot of current state
+            await page.screenshot(path='discover_basic.png')
+            
+            # Now try to navigate to the specific view with date filters
+            # Calculate date range for URL
+            start_date = target_date.replace(hour=0, minute=0, second=0, microsecond=0)
+            end_date = start_date + timedelta(days=1)
+            
+            # Try the specific discover URL with your view
+            specific_url = f"{self.kibana_base_url}/app/discover#/view/84b881a0-6b52-11f0-89e0-f9470fca93e5?_g=(filters:!(),refreshInterval:(pause:!t,value:0),time:(from:'{start_date.isoformat()}Z',to:'{end_date.isoformat()}Z'))&_a=(columns:!(bookingId,location.businessName,location.businessId,client.lastName,isGoogleBooking,offering.name,client.firstName,client.email,bookingStatus.label,startDateTime),filters:!(),index:a8e8cdc8-c993-429b-b378-d2bfa0589440,interval:auto,query:(language:kuery,query:''),sort:!(!(utcCreatedDateTime,asc)))"
+            
+            logger.info("Navigating to specific view with date filters...")
+            await page.goto(specific_url, timeout=45000)
+            
+            # Wait for the specific data to load with longer timeout
+            await page.wait_for_load_state('networkidle', timeout=30000)
+            
+            # Take screenshot after navigation
+            await page.screenshot(path='discover_specific.png')
+            
+            # Look for data table or loading indicators
+            data_selectors = [
+                '[data-test-subj="discoverDocTable"]',
+                '.euiDataGrid',
+                '.kuiTable',
+                '.discover-table',
+                'table',
+                '[data-test-subj="docTable"]'
+            ]
+            
+            table_found = False
+            for selector in data_selectors:
+                try:
+                    element = await page.wait_for_selector(selector, timeout=10000)
+                    if element:
+                        logger.info(f"Found data table with selector: {selector}")
+                        table_found = True
+                        break
+                except:
+                    continue
+            
+            if not table_found:
+                # Maybe there's no data for this date, or the page structure is different
+                logger.warning("No data table found, checking for 'no results' messages")
+                
+                no_data_selectors = [
+                    ':has-text("No results")',
+                    ':has-text("No documents")',
+                    ':has-text("0 hits")',
+                    '.euiEmptyPrompt',
+                    '[data-test-subj="discoverNoResults"]'
+                ]
+                
+                for selector in no_data_selectors:
+                    try:
+                        element = await page.wait_for_selector(selector, timeout=3000)
+                        if element:
+                            logger.info(f"Found 'no results' message: {selector}")
+                            return  # No data for this date, but page loaded successfully
+                    except:
+                        continue
+                
+                # Save page content for debugging
+                content = await page.content()
+                with open('discover_page_content.html', 'w') as f:
+                    f.write(content)
+                
+                await page.screenshot(path='discover_no_table.png')
+                logger.warning("Could not find data table or 'no results' message")
+            
+            # Wait a bit more for any dynamic content to load
+            logger.info("Waiting for data to populate...")
+            await page.wait_for_timeout(5000)
+            
+            # Final screenshot
+            await page.screenshot(path='discover_final.png')
+            logger.info("Discover page navigation completed")
+            
+        except Exception as e:
+            logger.error(f"Error navigating to discover: {e}")
+            await page.screenshot(path='discover_error.png')
+            
+            # Save page content for debugging
+            try:
+                content = await page.content()
+                with open('discover_error_content.html', 'w') as f:
+                    f.write(content)
+            except:
+                pass
+            
+            raise
     
     async def extract_appointment_data(self, page):
         """Extract appointment data from the Kibana discover table"""
