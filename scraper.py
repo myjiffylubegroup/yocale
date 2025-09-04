@@ -16,8 +16,6 @@ class KibanaWebScraper:
     def __init__(self):
         """Initialize with environment variables"""
         self.kibana_base_url = os.environ.get('KIBANA_BASE_URL')
-        self.kibana_username = os.environ.get('KIBANA_USERNAME')
-        self.kibana_password = os.environ.get('KIBANA_PASSWORD')
         self.supabase_url = os.environ.get('SUPABASE_URL')
         self.supabase_key = os.environ.get('SUPABASE_ANON_KEY')
         
