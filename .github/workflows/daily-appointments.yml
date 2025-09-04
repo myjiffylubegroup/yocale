@@ -35,6 +35,7 @@ jobs:
       env:
         KIBANA_BASE_URL: ${{ secrets.KIBANA_BASE_URL }}
         KIBANA_AUTH_TOKEN: ${{ secrets.KIBANA_AUTH_TOKEN }}
+        KIBANA_SESSION_COOKIE: ${{ secrets.KIBANA_SESSION_COOKIE }}
         SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
         SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
       run: python main.py
