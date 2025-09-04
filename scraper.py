@@ -1,4 +1,4 @@
-# scraper.py - Corrected web scraping solution with 15-day URL
+# scraper.py - Clean cookie-based Kibana scraper
 import os
 import asyncio
 import pandas as pd
@@ -22,286 +22,209 @@ class KibanaWebScraper:
         # Initialize Supabase client
         self.supabase: Client = create_client(self.supabase_url, self.supabase_key)
         
-    async def login_to_kibana(self, page):
-        """Login to Kibana using credentials"""
-        logger.info("Navigating to Kibana login page...")
+    async def setup_authenticated_session(self, page):
+        """Set up authenticated session using existing cookie"""
+        logger.info("Setting up authenticated session using existing cookie...")
         
-        # Go to main Kibana URL - it should redirect to login
+        # Get the session cookie from environment variable
+        session_cookie = os.environ.get('KIBANA_SESSION_COOKIE')
+        if not session_cookie:
+            raise Exception("KIBANA_SESSION_COOKIE environment variable not set")
+        
+        # First navigate to the Kibana domain to set the cookie context
         await page.goto(self.kibana_base_url, timeout=30000)
         
-        # Take screenshot for debugging
-        await page.screenshot(path='login_page.png')
-        logger.info("Took screenshot of login page")
+        # Set the authentication cookie with multiple possible names and domains
+        cookie_configs = [
+            {
+                'name': 'sid',
+                'value': session_cookie,
+                'domain': '.aws.elastic-cloud.com',
+                'path': '/',
+                'httpOnly': True,
+                'secure': True
+            },
+            {
+                'name': 'sid',
+                'value': session_cookie,
+                'domain': 'ef337caea6fe4ab2832e7738e53d998f.ca-central-1.aws.elastic-cloud.com',
+                'path': '/',
+                'httpOnly': True,
+                'secure': True
+            },
+            {
+                'name': 'elastic_session',
+                'value': session_cookie,
+                'domain': '.aws.elastic-cloud.com',
+                'path': '/',
+                'httpOnly': True,
+                'secure': True
+            }
+        ]
         
-        # Wait for page to load
-        try:
-            logger.info("Waiting for page to fully load...")
-            await page.wait_for_load_state('networkidle', timeout=20000)
-            
-            # Check if this is the Elastic Cloud login selection page
-            elasticsearch_login_selectors = [
-                'text="Log in with Elasticsearch"',
-                ':has-text("Log in with Elasticsearch")',
-                'button:has-text("Elasticsearch")',
-                '[data-test-subj="loginCard-elasticsearch"]',
-                '.loginCard:has-text("Elasticsearch")'
-            ]
-            
-            elasticsearch_button = None
-            for selector in elasticsearch_login_selectors:
-                try:
-                    logger.info(f"Looking for Elasticsearch login button: {selector}")
-                    elasticsearch_button = await page.wait_for_selector(selector, timeout=5000)
-                    if elasticsearch_button:
-                        logger.info(f"Found Elasticsearch login button with: {selector}")
-                        break
-                except:
-                    continue
-            
-            if elasticsearch_button:
-                logger.info("Clicking 'Log in with Elasticsearch' button")
-                await elasticsearch_button.click()
-                
-                # Wait for the actual login form to appear
-                await page.wait_for_load_state('networkidle', timeout=10000)
-                await page.screenshot(path='after_elasticsearch_click.png')
-            
-            # Now look for the actual username/password form
-            logger.info("Looking for username/password form...")
-            
-            login_selectors = [
-                'input[type="email"]',
-                'input[name="username"]', 
-                'input[name="email"]',
-                'input[data-test-subj="loginUsername"]',
-                'input[placeholder*="email"]',
-                'input[placeholder*="username"]',
-                'input[placeholder*="Username"]',
-                'input[placeholder*="Email"]',
-                '#username',
-                '#email',
-                '.login input[type="text"]',
-                'form input[type="text"]',
-                'input[type="text"]'
-            ]
-            
-            username_element = None
-            username_selector = None
-            
-            for selector in login_selectors:
-                try:
-                    logger.info(f"Trying username selector: {selector}")
-                    username_element = await page.wait_for_selector(selector, timeout=3000)
-                    if username_element:
-                        username_selector = selector
-                        logger.info(f"Found username field with: {selector}")
-                        break
-                except:
-                    continue
-            
-            if not username_element:
-                # Maybe we're already logged in? Check for Kibana chrome
-                try:
-                    await page.wait_for_selector('[data-test-subj="kibanaChrome"]', timeout=5000)
-                    logger.info("Already logged in - found Kibana chrome")
-                    return
-                except:
-                    pass
-                
-                # Dump page content for debugging
-                content = await page.content()
-                with open('login_form_content.html', 'w') as f:
-                    f.write(content)
-                
-                await page.screenshot(path='no_username_field.png')
-                raise Exception("Could not find username field after clicking Elasticsearch login")
-            
-            # Fill username
-            await username_element.fill(self.kibana_username)
-            logger.info("Filled username field")
-            
-            # Find password field
-            password_selectors = [
-                'input[type="password"]',
-                'input[name="password"]',
-                'input[data-test-subj="loginPassword"]',
-                'input[placeholder*="password"]',
-                'input[placeholder*="Password"]',
-                '#password',
-                '.login input[type="password"]',
-                'form input[type="password"]'
-            ]
-            
-            password_element = None
-            for selector in password_selectors:
-                try:
-                    logger.info(f"Trying password selector: {selector}")
-                    password_element = await page.wait_for_selector(selector, timeout=3000)
-                    if password_element:
-                        logger.info(f"Found password field with: {selector}")
-                        break
-                except:
-                    continue
-            
-            if not password_element:
-                await page.screenshot(path='no_password_field.png')
-                raise Exception("Could not find password field")
-            
-            await password_element.fill(self.kibana_password)
-            logger.info("Filled password field")
-            
-            # Find and click login button
-            login_button_selectors = [
-                'button[type="submit"]',
-                'input[type="submit"]',
-                'button[data-test-subj="loginSubmit"]',
-                'button:has-text("Log in")',
-                'button:has-text("Sign in")',
-                'button:has-text("Login")',
-                'button:has-text("Submit")',
-                '.login button',
-                'form button[type="submit"]',
-                'form button',
-                '[role="button"]:has-text("Log")'
-            ]
-            
-            login_button = None
-            for selector in login_button_selectors:
-                try:
-                    logger.info(f"Trying login button selector: {selector}")
-                    login_button = await page.wait_for_selector(selector, timeout=3000)
-                    if login_button:
-                        logger.info(f"Found login button with: {selector}")
-                        break
-                except:
-                    continue
-            
-            if not login_button:
-                # Try pressing Enter instead
-                logger.info("No login button found, trying Enter key")
-                await password_element.press('Enter')
-            else:
-                await login_button.click()
-                logger.info("Clicked login button")
-            
-            # Wait for login to complete
-            logger.info("Waiting for login to complete...")
-            
-            # Look for success indicators
-            success_selectors = [
-                '[data-test-subj="kibanaChrome"]',
-                '.chrome',
-                '[data-test-subj="globalLoadingIndicator-hidden"]',
-                'nav[aria-label="Primary"]',
-                '.euiHeader',
-                '.kbnAppWrapper',
-                '[data-test-subj="kibanaChrome"] nav'
-            ]
-            
-            login_successful = False
-            for selector in success_selectors:
-                try:
-                    await page.wait_for_selector(selector, timeout=15000)
-                    logger.info(f"Login successful - found: {selector}")
-                    login_successful = True
-                    break
-                except:
-                    continue
-            
-            if not login_successful:
-                # Check if we're still on login page or got an error
-                await page.screenshot(path='after_login_attempt.png')
-                
-                # Look for error messages
-                error_selectors = [
-                    '.error',
-                    '.alert',
-                    '[data-test-subj="loginErrorMessage"]',
-                    '.euiCallOut--danger',
-                    '.euiToast--danger',
-                    ':has-text("Invalid")',
-                    ':has-text("incorrect")',
-                    ':has-text("failed")'
-                ]
-                
-                for selector in error_selectors:
-                    try:
-                        error_element = await page.wait_for_selector(selector, timeout=2000)
-                        if error_element:
-                            error_text = await error_element.inner_text()
-                            raise Exception(f"Login error: {error_text}")
-                    except:
-                        continue
-                
-                # Save page content for debugging
-                content = await page.content()
-                with open('after_login_content.html', 'w') as f:
-                    f.write(content)
-                
-                raise Exception("Login may have failed - no success indicators found")
-            
-            logger.info("Successfully logged into Kibana")
-            
-        except Exception as e:
-            logger.error(f"Login failed: {e}")
-            # Take final screenshot for debugging
-            await page.screenshot(path='login_error.png')
-            raise
+        for cookie_config in cookie_configs:
+            try:
+                await page.context.add_cookies([cookie_config])
+                logger.info(f"Set cookie: {cookie_config['name']} for domain: {cookie_config['domain']}")
+            except Exception as e:
+                logger.warning(f"Failed to set cookie {cookie_config['name']}: {e}")
+        
+        logger.info("Session cookies set, testing authentication...")
+        
+        # Test the session by navigating to a basic Kibana page
+        test_url = f"{self.kibana_base_url}/app/home"
+        await page.goto(test_url, timeout=30000)
+        await page.wait_for_load_state('networkidle', timeout=20000)
+        
+        # Take screenshot to verify
+        await page.screenshot(path='session_test.png')
+        
+        # Check if we're authenticated (not redirected to login)
+        current_url = page.url
+        logger.info(f"After setting cookies, current URL: {current_url}")
+        
+        if "login" in current_url.lower() or "auth" in current_url.lower():
+            await page.screenshot(path='cookie_auth_failed.png')
+            raise Exception(f"Cookie authentication failed - still at login: {current_url}")
+        
+        # Look for Kibana UI elements to confirm we're authenticated
+        kibana_indicators = [
+            '[data-test-subj="kibanaChrome"]',
+            '.kbnAppWrapper',
+            'nav[aria-label="Primary"]',
+            '.euiHeader',
+            '.globalNav'
+        ]
+        
+        session_verified = False
+        for selector in kibana_indicators:
+            try:
+                await page.wait_for_selector(selector, timeout=5000)
+                logger.info(f"Authentication verified - found Kibana UI: {selector}")
+                session_verified = True
+                break
+            except:
+                continue
+        
+        if not session_verified:
+            await page.screenshot(path='no_kibana_ui_after_cookie.png')
+            logger.warning("Could not verify Kibana session with cookie - continuing anyway")
+        
+        logger.info("Cookie-based authentication completed")
     
     async def navigate_to_discover(self, page, target_date=None):
         """Navigate to the discover page with 15-day appointment data"""
         # Use the 15-day rolling window URL which is more reliable
         discover_url = f"{self.kibana_base_url}/app/discover#/view/84b881a0-6b52-11f0-89e0-f9470fca93e5?_g=(filters%3A!()%2CrefreshInterval%3A(pause%3A!t%2Cvalue%3A0)%2Ctime%3A(from%3Anow-15d%2Cto%3Anow))"
         
-        logger.info("Navigating to 15-day appointment data view...")
-        await page.goto(discover_url, timeout=45000)
+        logger.info(f"Navigating to 15-day appointment data view...")
+        logger.info(f"Target URL: {discover_url}")
         
-        # Wait for the page to load completely
-        await page.wait_for_load_state('networkidle', timeout=30000)
-        logger.info("Discover page loaded")
-        
-        # Take screenshot after navigation
-        await page.screenshot(path='discover_loaded.png')
-        
-        # Wait for data table to appear
-        table_selectors = [
-            '[data-test-subj="discoverDocTable"]',
-            '.euiDataGrid',
-            '.kuiTable',
-            'table'
-        ]
-        
-        table_found = False
-        for selector in table_selectors:
+        try:
+            await page.goto(discover_url, timeout=45000)
+            
+            # Wait for the page to load completely
+            await page.wait_for_load_state('networkidle', timeout=30000)
+            
+            # Check if we got redirected back to login
+            current_url = page.url
+            logger.info(f"Current page URL: {current_url}")
+            
+            if "login" in current_url.lower() or "auth" in current_url.lower():
+                await page.screenshot(path='redirected_to_login.png')
+                raise Exception(f"Got redirected to login when trying to access discover page: {current_url}")
+            
+            logger.info("Discover page loaded")
+            
+            # Take screenshot after navigation
+            await page.screenshot(path='discover_loaded.png')
+            
+            # Wait for data table to appear
+            table_selectors = [
+                '[data-test-subj="discoverDocTable"]',
+                '.euiDataGrid',
+                '.kuiTable',
+                'table'
+            ]
+            
+            table_found = False
+            for selector in table_selectors:
+                try:
+                    await page.wait_for_selector(selector, timeout=15000)
+                    logger.info(f"Found data table with selector: {selector}")
+                    table_found = True
+                    break
+                except:
+                    continue
+            
+            if not table_found:
+                await page.screenshot(path='no_table_found.png')
+                
+                # Save page content for debugging
+                content = await page.content()
+                with open('discover_page_debug.html', 'w') as f:
+                    f.write(content)
+                
+                # Get page title and any error messages
+                page_title = await page.title()
+                logger.error(f"No data table found on page: {page_title}")
+                logger.error(f"Current URL: {current_url}")
+                
+                # Look for any error messages on the page
+                try:
+                    error_text = await page.evaluate('''() => {
+                        const errors = document.querySelectorAll('.euiCallOut--danger, .error, .alert-danger, [data-test-subj="discoverNoResults"]');
+                        return Array.from(errors).map(el => el.innerText).join('; ');
+                    }''')
+                    if error_text:
+                        logger.error(f"Error messages on page: {error_text}")
+                except:
+                    pass
+                
+                raise Exception(f"No data table found on discover page. URL: {current_url}, Title: {page_title}")
+            
+            # Wait a bit more for data to populate
+            logger.info("Waiting for data to populate...")
+            await page.wait_for_timeout(8000)
+            
+            # Final screenshot
+            await page.screenshot(path='discover_ready.png')
+            logger.info("Discover page ready for data extraction")
+            
+        except Exception as e:
+            # Take error screenshot and save page content
+            await page.screenshot(path='discover_navigation_error.png')
+            
             try:
-                await page.wait_for_selector(selector, timeout=15000)
-                logger.info(f"Found data table with selector: {selector}")
-                table_found = True
-                break
+                content = await page.content()
+                with open('discover_navigation_error.html', 'w') as f:
+                    f.write(content)
+                    
+                current_url = page.url
+                page_title = await page.title()
+                logger.error(f"Navigation failed. URL: {current_url}, Title: {page_title}")
             except:
-                continue
-        
-        if not table_found:
-            await page.screenshot(path='no_table_found.png')
-            logger.warning("No data table found, but continuing...")
-        
-        # Wait a bit more for data to populate
-        logger.info("Waiting for data to populate...")
-        await page.wait_for_timeout(8000)
-        
-        # Final screenshot
-        await page.screenshot(path='discover_ready.png')
-        logger.info("Discover page ready for data extraction")
+                pass
+                
+            raise
     
     async def extract_appointment_data(self, page):
         """Extract appointment data from the Kibana discover table"""
         logger.info("Extracting appointment data from page...")
         
+        # Always take a screenshot before extraction for debugging
+        await page.screenshot(path='before_extraction.png')
+        
+        # Log current URL and page title
+        current_url = page.url
+        page_title = await page.title()
+        logger.info(f"Extracting from URL: {current_url}")
+        logger.info(f"Page title: {page_title}")
+        
         appointments = []
         
         try:
-            # The data appears to be in a standard table format based on your sample
-            # Let's try multiple table selectors
+            # Look for tables using multiple selectors
             table_selectors = [
                 'table',
                 '[data-test-subj="discoverDocTable"] table',
@@ -328,13 +251,33 @@ class KibanaWebScraper:
                     logger.info("Using first table found on page")
                 else:
                     await page.screenshot(path='no_table_elements.png')
-                    raise Exception("No table elements found on page")
+                    
+                    # Save page content for debugging
+                    content = await page.content()
+                    with open('extraction_page_debug.html', 'w') as f:
+                        f.write(content)
+                    
+                    # Get all text content for debugging
+                    try:
+                        page_text = await page.evaluate('''() => {
+                            return document.body.innerText;
+                        }''')
+                        
+                        with open('page_text_content.txt', 'w') as f:
+                            f.write(page_text)
+                        
+                        logger.info("Saved page text content for debugging")
+                    except Exception as e2:
+                        logger.error(f"Failed to extract page text: {e2}")
+                    
+                    raise Exception(f"No table elements found on page: {current_url}")
             
             # Extract all rows from the table
             rows = await table_element.query_selector_all('tr')
             logger.info(f"Found {len(rows)} table rows")
             
             if len(rows) < 2:  # Need at least header + 1 data row
+                await page.screenshot(path='empty_table.png')
                 logger.warning("Table found but no data rows")
                 return []
             
@@ -386,28 +329,25 @@ class KibanaWebScraper:
             # Take a screenshot showing the extracted data
             await page.screenshot(path='data_extracted.png')
             
+            # Save extracted data for debugging
+            with open('extracted_data.json', 'w') as f:
+                json.dump(appointments, f, indent=2)
+            
             return appointments
             
         except Exception as e:
             logger.error(f"Error extracting data: {e}")
             await page.screenshot(path='extraction_error.png')
             
-            # Try alternative approach: extract text content and parse manually
+            # Always save debugging info on errors
             try:
-                # Get all text content and save for debugging
-                page_text = await page.evaluate('''() => {
-                    return document.body.innerText;
-                }''')
-                
-                with open('page_text_content.txt', 'w') as f:
-                    f.write(page_text)
-                
-                logger.info("Saved page text content for debugging")
-                
-            except Exception as e2:
-                logger.error(f"Failed to extract page text: {e2}")
+                content = await page.content()
+                with open('extraction_error_page.html', 'w') as f:
+                    f.write(content)
+            except:
+                pass
             
-            return []
+            raise  # Re-raise the error so the main function knows it failed
     
     def process_appointment_data(self, raw_appointments, target_date):
         """Process raw scraped data into clean format"""
@@ -569,7 +509,7 @@ class KibanaWebScraper:
             page = await context.new_page()
             
             try:
-                # Set up authenticated session using cookie instead of login
+                # Set up authenticated session using cookie
                 await self.setup_authenticated_session(page)
                 
                 # Navigate to discover page with 15-day data
