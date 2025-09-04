@@ -580,6 +580,19 @@ class KibanaWebScraper:
                 # Extract appointment data
                 raw_appointments = await self.extract_appointment_data(page)
                 
+                # Check if we actually got data
+                if not raw_appointments:
+                    # Take final screenshot for debugging
+                    await page.screenshot(path='final_no_data.png')
+                    
+                    logger.error("No appointment data was extracted from the page")
+                    return {
+                        'status': 'error',
+                        'error': 'No appointment data found on the page',
+                        'date': target_date.date().isoformat(),
+                        'url': page.url
+                    }
+                
                 # Process the data
                 processed_df = self.process_appointment_data(raw_appointments, target_date)
                 
@@ -591,23 +604,36 @@ class KibanaWebScraper:
                     return {
                         'status': 'success',
                         'records_processed': len(processed_df),
-                        'date': target_date.date().isoformat()
+                        'raw_records_found': len(raw_appointments),
+                        'date': target_date.date().isoformat(),
+                        'url': page.url
                     }
                 else:
-                    logger.info("No appointments found")
+                    logger.warning("Raw data found but no records after processing/filtering")
                     return {
-                        'status': 'success',
+                        'status': 'warning',
                         'records_processed': 0,
+                        'raw_records_found': len(raw_appointments),
                         'date': target_date.date().isoformat(),
-                        'message': 'No appointments found'
+                        'message': 'Data found but no records for target date after filtering',
+                        'url': page.url
                     }
                     
             except Exception as e:
                 logger.error(f"Scraping failed: {e}")
+                
+                # Take final error screenshot
+                try:
+                    await page.screenshot(path='final_error.png')
+                    current_url = page.url
+                except:
+                    current_url = "Unable to get URL"
+                
                 return {
                     'status': 'error',
                     'error': str(e),
-                    'date': target_date.date().isoformat()
+                    'date': target_date.date().isoformat(),
+                    'url': current_url
                 }
             finally:
                 await browser.close()
