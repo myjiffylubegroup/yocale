@@ -1,11 +1,3 @@
-# requirements.txt for scraper
-"""
-playwright==1.40.0
-pandas==2.0.3
-supabase==2.18.1
-python-dotenv==1.0.0
-beautifulsoup4==4.12.2
-"""
 
 # scraper.py - Web scraping solution
 import os
