@@ -263,7 +263,7 @@ const Dashboard = () => {
             {Object.entries(LOCATIONS).map(([locationId, locationName]) => (
               <a
                 key={locationId}
-                href={LOCATION_URLS[locationId]}
+                href={`${window.location.pathname}?store=${locationId}`}
                 className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
                   locationId === CURRENT_LOCATION
                     ? 'bg-blue-600 text-white'
