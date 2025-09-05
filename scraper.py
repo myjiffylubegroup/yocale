@@ -569,7 +569,7 @@ class KibanaWebScraper:
         # Convert data_date to string to avoid JSON serialization issues
         df['data_date'] = df['data_date'].astype(str)
         
-        # Select final columns for dashboard
+        # Select final columns for dashboard (remove is_google_booking if not in Supabase schema)
         final_columns = [
             'booking_id',
             'customer_name', 
@@ -582,7 +582,6 @@ class KibanaWebScraper:
             'location_name',
             'location_id',
             'status',
-            'is_google_booking',
             'extracted_at',
             'data_date'
         ]
