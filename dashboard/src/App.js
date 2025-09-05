@@ -91,7 +91,8 @@ const Dashboard = () => {
       if (error) {
         console.error('Supabase error details:', error);
         console.error('Query parameters:', {
-          location_id: parseInt(CURRENT_LOCATION),
+          location_business_id: LOCATION_BUSINESS_IDS[CURRENT_LOCATION],
+          current_location: CURRENT_LOCATION,
           dates: [today, tomorrow]
         });
         return;
