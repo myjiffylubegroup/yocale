@@ -569,45 +569,24 @@ class KibanaWebScraper:
         # Convert data_date to string to avoid JSON serialization issues
         df['data_date'] = df['data_date'].astype(str)
         
-        # Select final columns for dashboard - INCLUDE ALL AVAILABLE COLUMNS
+        # Select final columns for database - match our simple table structure
         final_columns = [
-            # Primary identifiers
             'booking_id',
-            
-            # Customer information
-            'customer_name',
-            'first_name', 
-            'last_name',
-            'email',
-            
-            # Service information
-            'service_type',
-            'offering_name',
-            
-            # Location information
-            'location_name',
+            'time_column',
             'location_business_name',
-            'location_id',
             'location_business_id',
-            
-            # Status and booking type
-            'status',
-            'booking_status_label',
+            'client_last_name',
             'is_google_booking',
-            
-            # DateTime fields
-            'appointment_datetime',
+            'offering_name',
+            'client_first_name',
+            'client_email',
+            'booking_status_label',
             'start_date_time',
+            'customer_name',
+            'appointment_datetime',
             'appointment_date',
-            'appointment_time', 
+            'appointment_time',
             'appointment_time_12h',
-            'time_field',
-            
-            # Duration fields (for future use)
-            'end_date_time',
-            'duration_minutes',
-            
-            # Metadata
             'extracted_at',
             'data_date'
         ]
