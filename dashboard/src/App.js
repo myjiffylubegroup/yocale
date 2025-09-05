@@ -326,7 +326,7 @@ const Dashboard = () => {
         </h2>
         <div 
           ref={scrollRef}
-          className="space-y-4 max-h-96 overflow-y-auto pr-2"
+          className="space-y-4 max-h-[calc(100vh-240px)] overflow-y-auto pr-2"
           style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
         >
           <style jsx>{`
