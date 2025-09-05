@@ -589,6 +589,8 @@ class KibanaWebScraper:
             try:
                 clean_str = str(dt_str).replace(' @ ', ' ').strip()
                 parsed = pd.to_datetime(clean_str, errors='coerce')
+                if not pd.isna(parsed):
+                    parsed = parsed.tz_localize('America/Los_Angeles', ambiguous='infer')
                 return parsed
             except Exception as e:
                 logger.warning(f"Parse failed for '{dt_str}': {e}")
