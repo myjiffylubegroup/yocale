@@ -73,6 +73,12 @@ const Dashboard = () => {
   const fetchAppointments = async () => {
     setLoading(true);
     try {
+      if (!supabase) {
+        console.error('Supabase not configured. Please set environment variables.');
+        setAppointments([]);
+        return;
+      }
+
       const today = getTodayPacific();
       const tomorrow = getTomorrowPacific();
       
