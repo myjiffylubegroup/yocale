@@ -172,7 +172,7 @@ const Dashboard = () => {
         <div className="flex-1">
           <div className="flex items-center gap-4 mb-2">
             <span className="text-lg font-bold text-blue-600">
-              {formatTime(appointment.appointment_time)}
+              {formatTime(appointment)}
             </span>
             <span className="text-lg font-semibold text-gray-800">
               {appointment.customer_name}
