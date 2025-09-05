@@ -127,28 +127,67 @@ const Dashboard = () => {
     
     appointments.forEach(apt => {
       const customerName = apt.customer_name || `${apt.client_first_name || ''} ${apt.client_last_name || ''}`.trim() || 'Walk-in';
-      const timeKey = apt.appointment_time_12h || 'No time';
-      const key = `${customerName}-${timeKey}`;
+      // Group by customer only, not by time
+      const key = customerName;
       
       if (!grouped[key]) {
         grouped[key] = {
           customer_name: customerName,
-          appointment_time_12h: apt.appointment_time_12h,
-          services: []
+          appointment_time_12h: apt.appointment_time_12h, // Use first appointment time
+          services: [],
+          times: [] // Track all appointment times
         };
       }
       
       if (apt.offering_name) {
         grouped[key].services.push(apt.offering_name);
+        grouped[key].times.push(apt.appointment_time_12h);
       }
     });
     
-    // Sort by time
+    // Sort by first appointment time
     return Object.values(grouped).sort((a, b) => {
       if (!a.appointment_time_12h) return 1;
       if (!b.appointment_time_12h) return -1;
       return a.appointment_time_12h.localeCompare(b.appointment_time_12h);
     });
+  };
+
+  const isAppointmentCurrent = (appointment) => {
+    if (!appointment.appointment_time_12h) return true; // Show if no time
+    
+    try {
+      const now = new Date();
+      const currentPacific = now.toLocaleString('en-US', {
+        timeZone: 'America/Los_Angeles',
+        hour12: false,
+        hour: '2-digit',
+        minute: '2-digit'
+      });
+      
+      // Convert appointment time to 24-hour format for comparison
+      const aptTime = appointment.appointment_time_12h;
+      const [time, period] = aptTime.split(' ');
+      const [hours, minutes] = time.split(':');
+      let hour24 = parseInt(hours);
+      
+      if (period === 'PM' && hour24 !== 12) hour24 += 12;
+      if (period === 'AM' && hour24 === 12) hour24 = 0;
+      
+      const aptTime24 = `${hour24.toString().padStart(2, '0')}:${minutes}`;
+      
+      // Calculate if appointment is more than 3 hours old
+      const [currentHour, currentMin] = currentPacific.split(':').map(Number);
+      const [aptHour, aptMin] = aptTime24.split(':').map(Number);
+      
+      const currentMinutes = currentHour * 60 + currentMin;
+      const aptMinutes = aptHour * 60 + aptMin;
+      
+      // Show appointment if it's within 3 hours (180 minutes) of current time
+      return (currentMinutes - aptMinutes) <= 180;
+    } catch (error) {
+      return true; // Show if we can't parse time
+    }
   };
 
   const filterAppointmentsByDate = (dateString) => {
@@ -159,7 +198,8 @@ const Dashboard = () => {
     });
   };
 
-  const todayAppointments = groupAppointmentsByCustomer(filterAppointmentsByDate(getTodayPacific()));
+  const todayAppointments = groupAppointmentsByCustomer(filterAppointmentsByDate(getTodayPacific()))
+    .filter(isAppointmentCurrent); // Hide appointments older than 3 hours
   const tomorrowAppointments = groupAppointmentsByCustomer(filterAppointmentsByDate(getTomorrowPacific()));
 
   const renderServices = (appointment) => {
