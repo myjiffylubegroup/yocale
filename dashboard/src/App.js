@@ -251,10 +251,10 @@ const Dashboard = () => {
       <div className="flex justify-between items-start">
         <div className="flex-1">
           <div className="flex items-center gap-4 mb-3">
-            <span className="text-2xl font-bold text-red-600 bg-red-50 px-3 py-1 rounded-lg">
+            <span className="text-xl font-bold text-red-600 bg-red-50 px-3 py-1 rounded-lg">
               {formatTime(appointment)}
             </span>
-            <span className="text-xl font-semibold text-gray-900">
+            <span className="text-lg font-semibold text-gray-900">
               {appointment.customer_name}
             </span>
           </div>
