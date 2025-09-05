@@ -89,7 +89,11 @@ const Dashboard = () => {
         .order('appointment_time', { ascending: true });
 
       if (error) {
-        console.error('Error fetching appointments:', error);
+        console.error('Supabase error details:', error);
+        console.error('Query parameters:', {
+          location_id: parseInt(CURRENT_LOCATION),
+          dates: [today, tomorrow]
+        });
         return;
       }
 
