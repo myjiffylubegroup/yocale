@@ -532,11 +532,16 @@ class KibanaWebScraper:
                 df['appointment_time'] = df['appointment_datetime'].dt.strftime('%H:%M')
                 df['appointment_time_12h'] = df['appointment_datetime'].dt.strftime('%I:%M %p')
                 
-                # Filter for target date if specified
-                if target_date:
-                    target_date_obj = target_date.date()
-                    df = df[df['appointment_date'] == target_date_obj]
-                    logger.info(f"Filtered to {len(df)} appointments for {target_date_obj}")
+                # Filter for target date if specified (disabled to get all 15-day data)
+                # if target_date:
+                #     target_date_obj = target_date.date()
+                #     df = df[df['appointment_date'] == target_date_obj]
+                #     logger.info(f"Filtered to {len(df)} appointments for {target_date_obj}")
+                
+                # Log the date range of appointments found
+                if not df['appointment_date'].isna().all():
+                    date_range = f"{df['appointment_date'].min()} to {df['appointment_date'].max()}"
+                    logger.info(f"Found appointments from {date_range} (total: {len(df)})")
                 
             except Exception as e:
                 logger.warning(f"Error parsing appointment_datetime: {e}")
