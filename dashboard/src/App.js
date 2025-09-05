@@ -13,6 +13,18 @@ const LOCATIONS = {
   '2911': 'Paso Robles'
 };
 
+// Map store numbers to the actual location_business_id values in the database
+const LOCATION_BUSINESS_IDS = {
+  '4182': 212584,  // State Street
+  '1396': 212583,  // Santa Barbara
+  '1257': 212582,  // Goleta
+  '609': 212581,   // Santa Maria
+  '1270': 212580,  // Arroyo Grande
+  '1002': 212579,  // San Luis Obispo
+  '1932': 212578,  // Atascadero
+  '2911': 212577   // Paso Robles
+};
+
 // Get location from URL parameter or default to State Street
 const getLocationFromURL = () => {
   const urlParams = new URLSearchParams(window.location.search);
