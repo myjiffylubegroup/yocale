@@ -175,21 +175,12 @@ const Dashboard = () => {
               {formatTime(appointment.appointment_time)}
             </span>
             <span className="text-lg font-semibold text-gray-800">
-              {appointment.customer_name || `${appointment.client_first_name || ''} ${appointment.client_last_name || ''}`.trim() || 'Walk-in'}
+              {appointment.customer_name}
             </span>
           </div>
           <div className="text-gray-700">
             {renderServices(appointment)}
           </div>
-          {appointment.booking_status_label && (
-            <div className={`inline-block px-2 py-1 rounded text-xs mt-2 ${
-              appointment.booking_status_label.toLowerCase() === 'confirmed' 
-                ? 'bg-green-100 text-green-800' 
-                : 'bg-red-100 text-red-800'
-            }`}>
-              {appointment.booking_status_label}
-            </div>
-          )}
         </div>
       </div>
     </div>
