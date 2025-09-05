@@ -1,4 +1,4 @@
-# scraper.py - Clean cookie-based Kibana scraper
+# scraper.py - Kibana scraper with integrated login
 import os
 import asyncio
 import pandas as pd
@@ -16,101 +16,239 @@ class KibanaWebScraper:
     def __init__(self):
         """Initialize with environment variables"""
         self.kibana_base_url = os.environ.get('KIBANA_BASE_URL')
+        self.kibana_username = os.environ.get('KIBANA_USERNAME')
+        self.kibana_password = os.environ.get('KIBANA_PASSWORD')
         self.supabase_url = os.environ.get('SUPABASE_URL')
         self.supabase_key = os.environ.get('SUPABASE_ANON_KEY')
         
+        # Validate required environment variables
+        if not all([self.kibana_base_url, self.kibana_username, self.kibana_password]):
+            raise Exception("Missing required Kibana environment variables: KIBANA_BASE_URL, KIBANA_USERNAME, KIBANA_PASSWORD")
+        
+        if not all([self.supabase_url, self.supabase_key]):
+            raise Exception("Missing required Supabase environment variables: SUPABASE_URL, SUPABASE_ANON_KEY")
+        
         # Initialize Supabase client
         self.supabase: Client = create_client(self.supabase_url, self.supabase_key)
+    
+    async def login_to_kibana(self, page):
+        """Login to Kibana using username/password"""
+        logger.info("=== Starting Kibana Login ===")
         
-    async def setup_authenticated_session(self, page):
-        """Set up authenticated session using existing cookie"""
-        logger.info("Setting up authenticated session using existing cookie...")
-        
-        # Get the session cookie from environment variable
-        session_cookie = os.environ.get('KIBANA_SESSION_COOKIE')
-        if not session_cookie:
-            raise Exception("KIBANA_SESSION_COOKIE environment variable not set")
-        
-        # First navigate to the Kibana domain to set the cookie context
+        # Step 1: Navigate to base URL
+        logger.info(f"Step 1: Navigating to {self.kibana_base_url}")
         await page.goto(self.kibana_base_url, timeout=30000)
+        await page.wait_for_load_state('networkidle', timeout=15000)
+        await page.screenshot(path='login_step1_initial.png')
         
-        # Set the authentication cookie with multiple possible names and domains
-        cookie_configs = [
-            {
-                'name': 'sid',
-                'value': session_cookie,
-                'domain': '.aws.elastic-cloud.com',
-                'path': '/',
-                'httpOnly': True,
-                'secure': True
-            },
-            {
-                'name': 'sid',
-                'value': session_cookie,
-                'domain': 'ef337caea6fe4ab2832e7738e53d998f.ca-central-1.aws.elastic-cloud.com',
-                'path': '/',
-                'httpOnly': True,
-                'secure': True
-            },
-            {
-                'name': 'elastic_session',
-                'value': session_cookie,
-                'domain': '.aws.elastic-cloud.com',
-                'path': '/',
-                'httpOnly': True,
-                'secure': True
-            }
-        ]
-        
-        for cookie_config in cookie_configs:
-            try:
-                await page.context.add_cookies([cookie_config])
-                logger.info(f"Set cookie: {cookie_config['name']} for domain: {cookie_config['domain']}")
-            except Exception as e:
-                logger.warning(f"Failed to set cookie {cookie_config['name']}: {e}")
-        
-        logger.info("Session cookies set, testing authentication...")
-        
-        # Test the session by navigating to a basic Kibana page
-        test_url = f"{self.kibana_base_url}/app/home"
-        await page.goto(test_url, timeout=30000)
-        await page.wait_for_load_state('networkidle', timeout=20000)
-        
-        # Take screenshot to verify
-        await page.screenshot(path='session_test.png')
-        
-        # Check if we're authenticated (not redirected to login)
         current_url = page.url
-        logger.info(f"After setting cookies, current URL: {current_url}")
+        page_title = await page.title()
+        logger.info(f"After navigation - URL: {current_url}, Title: {page_title}")
         
-        if "login" in current_url.lower() or "auth" in current_url.lower():
-            await page.screenshot(path='cookie_auth_failed.png')
-            raise Exception(f"Cookie authentication failed - still at login: {current_url}")
-        
-        # Look for Kibana UI elements to confirm we're authenticated
-        kibana_indicators = [
-            '[data-test-subj="kibanaChrome"]',
-            '.kbnAppWrapper',
-            'nav[aria-label="Primary"]',
-            '.euiHeader',
-            '.globalNav'
+        # Step 2: Look for and click "Log in with Elasticsearch"
+        logger.info("Step 2: Looking for Elasticsearch login option")
+        elasticsearch_selectors = [
+            'text="Log in with Elasticsearch"',
+            ':has-text("Log in with Elasticsearch")',
+            'button:has-text("Elasticsearch")',
+            '[data-test-subj="loginCard-elasticsearch"]'
         ]
         
-        session_verified = False
-        for selector in kibana_indicators:
+        elasticsearch_button = None
+        for selector in elasticsearch_selectors:
             try:
-                await page.wait_for_selector(selector, timeout=5000)
-                logger.info(f"Authentication verified - found Kibana UI: {selector}")
-                session_verified = True
-                break
+                logger.info(f"Trying selector: {selector}")
+                elasticsearch_button = await page.wait_for_selector(selector, timeout=3000)
+                if elasticsearch_button:
+                    logger.info(f"Found Elasticsearch button with: {selector}")
+                    break
             except:
+                logger.info(f"Selector {selector} not found")
                 continue
         
-        if not session_verified:
-            await page.screenshot(path='no_kibana_ui_after_cookie.png')
-            logger.warning("Could not verify Kibana session with cookie - continuing anyway")
+        if elasticsearch_button:
+            logger.info("Clicking Elasticsearch login button")
+            await elasticsearch_button.click()
+            await page.wait_for_load_state('networkidle', timeout=10000)
+            await page.screenshot(path='login_step2_elasticsearch_click.png')
+            
+            current_url = page.url
+            page_title = await page.title()
+            logger.info(f"After Elasticsearch click - URL: {current_url}, Title: {page_title}")
+        else:
+            logger.warning("No Elasticsearch login button found - proceeding to username/password")
         
-        logger.info("Cookie-based authentication completed")
+        # Step 3: Find and fill username
+        logger.info("Step 3: Looking for username field")
+        username_selectors = [
+            'input[name="username"]',
+            'input[type="email"]',
+            'input[type="text"]',
+            'input[placeholder*="username"]',
+            'input[placeholder*="email"]',
+            '#username',
+            '#email'
+        ]
+        
+        username_field = None
+        for selector in username_selectors:
+            try:
+                logger.info(f"Trying username selector: {selector}")
+                username_field = await page.wait_for_selector(selector, timeout=3000)
+                if username_field:
+                    logger.info(f"Found username field with: {selector}")
+                    break
+            except:
+                logger.info(f"Username selector {selector} not found")
+                continue
+        
+        if not username_field:
+            await page.screenshot(path='login_step3_no_username.png')
+            content = await page.content()
+            with open('login_step3_page_content.html', 'w') as f:
+                f.write(content)
+            raise Exception("Could not find username field")
+        
+        # Fill username using Playwright's fill() method
+        await username_field.fill(self.kibana_username)
+        logger.info(f"Filled username: {self.kibana_username}")
+        await page.screenshot(path='login_step3_username_filled.png')
+        
+        # Step 4: Find and fill password
+        logger.info("Step 4: Looking for password field")
+        password_selectors = [
+            'input[type="password"]',
+            'input[name="password"]',
+            '#password'
+        ]
+        
+        password_field = None
+        for selector in password_selectors:
+            try:
+                logger.info(f"Trying password selector: {selector}")
+                password_field = await page.wait_for_selector(selector, timeout=3000)
+                if password_field:
+                    logger.info(f"Found password field with: {selector}")
+                    break
+            except:
+                logger.info(f"Password selector {selector} not found")
+                continue
+        
+        if not password_field:
+            await page.screenshot(path='login_step4_no_password.png')
+            raise Exception("Could not find password field")
+        
+        # Fill password using Playwright's fill() method
+        await password_field.fill(self.kibana_password)
+        logger.info("Filled password")
+        await page.screenshot(path='login_step4_password_filled.png')
+        
+        # Step 5: Submit the form
+        logger.info("Step 5: Submitting login form")
+        submit_selectors = [
+            'button[type="submit"]',
+            'input[type="submit"]',
+            'button:has-text("Log in")',
+            'button:has-text("Sign in")',
+            'button:has-text("Login")',
+            'form button'
+        ]
+        
+        submit_button = None
+        for selector in submit_selectors:
+            try:
+                logger.info(f"Trying submit selector: {selector}")
+                submit_button = await page.wait_for_selector(selector, timeout=3000)
+                if submit_button:
+                    logger.info(f"Found submit button with: {selector}")
+                    break
+            except:
+                logger.info(f"Submit selector {selector} not found")
+                continue
+        
+        if submit_button:
+            await submit_button.click()
+            logger.info("Clicked submit button")
+        else:
+            logger.info("No submit button found, trying Enter key")
+            await password_field.press('Enter')
+        
+        await page.screenshot(path='login_step5_after_submit.png')
+        
+        # Step 6: Wait and verify login success
+        logger.info("Step 6: Verifying login success")
+        await page.wait_for_timeout(5000)  # Wait 5 seconds for redirect
+        
+        # Check for login success over multiple attempts
+        for i in range(3):
+            await page.wait_for_timeout(3000)
+            await page.screenshot(path=f'login_step6_check_{i+1}.png')
+            
+            current_url = page.url
+            page_title = await page.title()
+            logger.info(f"Login check {i+1} - URL: {current_url}, Title: {page_title}")
+            
+            # Look for Kibana success indicators
+            success_indicators = [
+                '[data-test-subj="kibanaChrome"]',
+                '.euiHeader',
+                'nav[aria-label="Primary"]',
+                '.kbnAppWrapper'
+            ]
+            
+            for indicator in success_indicators:
+                try:
+                    element = await page.wait_for_selector(indicator, timeout=2000)
+                    if element:
+                        logger.info(f"LOGIN SUCCESS: Found Kibana UI element: {indicator}")
+                        await page.screenshot(path='login_success_final.png')
+                        return True
+                except:
+                    continue
+            
+            # Check for error messages
+            error_selectors = [
+                '.error',
+                '.alert-danger',
+                '.euiCallOut--danger',
+                ':has-text("Invalid")',
+                ':has-text("incorrect")',
+                ':has-text("failed")'
+            ]
+            
+            for error_selector in error_selectors:
+                try:
+                    error_element = await page.wait_for_selector(error_selector, timeout=1000)
+                    if error_element:
+                        error_text = await error_element.inner_text()
+                        logger.error(f"Login error found: {error_text}")
+                        await page.screenshot(path='login_error_found.png')
+                        raise Exception(f"Login failed: {error_text}")
+                except:
+                    continue
+            
+            # Check if still on login page
+            if "login" in current_url.lower() or "auth" in current_url.lower():
+                logger.warning(f"Still on login page: {current_url}")
+            else:
+                logger.info(f"Redirected to: {current_url}")
+                # If we're not on login page anymore, assume success
+                logger.info("Login appears successful - not on login page")
+                await page.screenshot(path='login_success_by_redirect.png')
+                return True
+        
+        # Final check
+        current_url = page.url
+        if "login" in current_url.lower() or "auth" in current_url.lower():
+            logger.error("Login failed - still on login page after multiple attempts")
+            await page.screenshot(path='login_failed_final.png')
+            content = await page.content()
+            with open('login_failed_content.html', 'w') as f:
+                f.write(content)
+            raise Exception(f"Login failed - still on login page: {current_url}")
+        else:
+            logger.info("Login completed - assuming success")
+            return True
     
     async def navigate_to_discover(self, page, target_date=None):
         """Navigate to the discover page with 15-day appointment data"""
@@ -503,19 +641,31 @@ class KibanaWebScraper:
         logger.info(f"Starting web scraping for {target_date.date()}")
         
         async with async_playwright() as p:
-            # Launch browser (use headless=False for debugging)
-            browser = await p.chromium.launch(headless=True)
-            context = await browser.new_context()
+            # Launch browser with debugging options
+            browser = await p.chromium.launch(
+                headless=True,
+                args=[
+                    '--disable-blink-features=AutomationControlled',
+                    '--disable-web-security',
+                    '--disable-features=VizDisplayCompositor'
+                ]
+            )
+            
+            context = await browser.new_context(
+                user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+            )
+            
             page = await context.new_page()
             
             try:
-                # Set up authenticated session using cookie
-                await self.setup_authenticated_session(page)
+                # Step 1: Login to Kibana
+                await self.login_to_kibana(page)
+                logger.info("Login completed successfully")
                 
-                # Navigate to discover page with 15-day data
+                # Step 2: Navigate to discover page with 15-day data
                 await self.navigate_to_discover(page, target_date)
                 
-                # Extract appointment data
+                # Step 3: Extract appointment data
                 raw_appointments = await self.extract_appointment_data(page)
                 
                 # Check if we actually got data
@@ -531,11 +681,11 @@ class KibanaWebScraper:
                         'url': page.url
                     }
                 
-                # Process the data
+                # Step 4: Process the data
                 processed_df = self.process_appointment_data(raw_appointments, target_date)
                 
                 if not processed_df.empty:
-                    # Save to Supabase
+                    # Step 5: Save to Supabase
                     self.save_to_supabase(processed_df)
                     
                     logger.info("Daily scraping completed successfully")
@@ -562,7 +712,7 @@ class KibanaWebScraper:
                 
                 # Take final error screenshot
                 try:
-                    await page.screenshot(path='final_error.png')
+                    await page.screenshot(path='scraping_final_error.png')
                     current_url = page.url
                 except:
                     current_url = "Unable to get URL"
