@@ -202,7 +202,7 @@ const Dashboard = () => {
   const AppointmentColumn = ({ title, appointments, isEmpty }) => (
     <div className="flex-1">
       <h2 className="text-2xl font-bold text-gray-800 mb-6 text-center">{title}</h2>
-      <div className="space-y-3">
+      <div className="space-y-3 max-h-96 overflow-y-auto pr-2">
         {isEmpty ? (
           <div className="text-center text-gray-500 py-8">
             <div className="text-4xl mb-2">📅</div>
