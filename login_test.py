@@ -97,8 +97,7 @@ class KibanaLoginTester:
                 f.write(content)
             raise Exception("Could not find username field")
         
-        # Clear and fill username
-        await username_field.clear()
+        # Fill username (Playwright's fill() clears and fills in one step)
         await username_field.fill(self.kibana_username)
         logger.info(f"Filled username: {self.kibana_username}")
         await page.screenshot(path='step3_username_filled.png')
@@ -127,8 +126,7 @@ class KibanaLoginTester:
             await page.screenshot(path='step4_no_password_field.png')
             raise Exception("Could not find password field")
         
-        # Clear and fill password
-        await password_field.clear()
+        # Fill password (Playwright's fill() clears and fills in one step)
         await password_field.fill(self.kibana_password)
         logger.info("Filled password")
         await page.screenshot(path='step4_password_filled.png')
