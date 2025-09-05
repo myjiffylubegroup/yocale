@@ -569,19 +569,45 @@ class KibanaWebScraper:
         # Convert data_date to string to avoid JSON serialization issues
         df['data_date'] = df['data_date'].astype(str)
         
-        # Select final columns for dashboard (remove is_google_booking if not in Supabase schema)
+        # Select final columns for dashboard - INCLUDE ALL AVAILABLE COLUMNS
         final_columns = [
+            # Primary identifiers
             'booking_id',
-            'customer_name', 
+            
+            # Customer information
+            'customer_name',
+            'first_name', 
+            'last_name',
             'email',
+            
+            # Service information
             'service_type',
-            'appointment_date',
-            'appointment_time',
-            'appointment_time_12h',
-            'appointment_datetime',
+            'offering_name',
+            
+            # Location information
             'location_name',
+            'location_business_name',
             'location_id',
+            'location_business_id',
+            
+            # Status and booking type
             'status',
+            'booking_status_label',
+            'is_google_booking',
+            
+            # DateTime fields
+            'appointment_datetime',
+            'start_date_time',
+            'appointment_date',
+            'appointment_time', 
+            'appointment_time_12h',
+            'time_field',
+            
+            # Duration fields (for future use)
+            'end_date_time',
+            'duration_minutes',
+            
+            # Metadata
             'extracted_at',
             'data_date'
         ]
