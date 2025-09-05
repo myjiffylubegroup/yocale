@@ -13,24 +13,23 @@ const LOCATIONS = {
   '2911': 'Paso Robles'
 };
 
-const LOCATION_URLS = {
-  '4182': 'https://appt-state-street.onrender.com',
-  '1396': 'https://appt-santa-barbara.onrender.com',
-  '1257': 'https://appt-goleta.onrender.com', 
-  '609': 'https://appt-santa-maria.onrender.com',
-  '1270': 'https://appt-arroyo-grande.onrender.com',
-  '1002': 'https://appt-san-luis-obispo.onrender.com',
-  '1932': 'https://appt-atascadero.onrender.com',
-  '2911': 'https://appt-paso-robles.onrender.com'
+// Get location from URL parameter or default to State Street
+const getLocationFromURL = () => {
+  const urlParams = new URLSearchParams(window.location.search);
+  return urlParams.get('store') || '4182';
 };
 
-// Default to State Street for demo, but this will be set via environment variable
-const CURRENT_LOCATION = process.env.REACT_APP_LOCATION_ID || '4182';
+const CURRENT_LOCATION = getLocationFromURL();
 
 // Supabase configuration
-const supabaseUrl = process.env.REACT_APP_SUPABASE_URL || 'your-supabase-url';
-const supabaseKey = process.env.REACT_APP_SUPABASE_ANON_KEY || 'your-supabase-key';
-const supabase = createClient(supabaseUrl, supabaseKey);
+const supabaseUrl = process.env.REACT_APP_SUPABASE_URL;
+const supabaseKey = process.env.REACT_APP_SUPABASE_ANON_KEY;
+
+// Only initialize Supabase if we have valid credentials
+let supabase = null;
+if (supabaseUrl && supabaseKey && supabaseUrl !== 'your-supabase-url') {
+  supabase = createClient(supabaseUrl, supabaseKey);
+}
 
 const Dashboard = () => {
   const [appointments, setAppointments] = useState([]);
