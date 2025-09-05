@@ -566,6 +566,9 @@ class KibanaWebScraper:
         df['extracted_at'] = datetime.utcnow()
         df['data_date'] = target_date.date() if target_date else datetime.now().date()
         
+        # Convert data_date to string to avoid JSON serialization issues
+        df['data_date'] = df['data_date'].astype(str)
+        
         # Select final columns for dashboard
         final_columns = [
             'booking_id',
