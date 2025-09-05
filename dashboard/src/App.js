@@ -266,23 +266,86 @@ const Dashboard = () => {
     </div>
   );
 
-  const AppointmentColumn = ({ title, appointments, isEmpty }) => (
-    <div className="flex-1">
-      <h2 className="text-2xl font-bold text-gray-800 mb-6 text-center">{title}</h2>
-      <div className="space-y-3 max-h-96 overflow-y-auto pr-2">
-        {isEmpty ? (
-          <div className="text-center text-gray-500 py-8">
-            <div className="text-4xl mb-2">📅</div>
-            <div>No appointments scheduled</div>
-          </div>
-        ) : (
-          appointments.map((appointment, index) => (
-            <AppointmentCard key={index} appointment={appointment} />
-          ))
-        )}
+  const AppointmentColumn = ({ title, appointments, isEmpty }) => {
+    const scrollRef = React.useRef(null);
+    
+    React.useEffect(() => {
+      const scrollContainer = scrollRef.current;
+      if (!scrollContainer || isEmpty || appointments.length <= 3) return;
+      
+      let scrollInterval;
+      let scrollDirection = 1; // 1 for down, -1 for up
+      let pauseScrolling = false;
+      
+      const startAutoScroll = () => {
+        scrollInterval = setInterval(() => {
+          if (pauseScrolling) return;
+          
+          const { scrollTop, scrollHeight, clientHeight } = scrollContainer;
+          const maxScroll = scrollHeight - clientHeight;
+          
+          if (maxScroll <= 0) return; // No need to scroll
+          
+          if (scrollDirection === 1 && scrollTop >= maxScroll - 10) {
+            // Reached bottom, pause and then scroll up
+            pauseScrolling = true;
+            setTimeout(() => {
+              scrollDirection = -1;
+              pauseScrolling = false;
+            }, 3000); // Pause 3 seconds at bottom
+          } else if (scrollDirection === -1 && scrollTop <= 10) {
+            // Reached top, pause and then scroll down
+            pauseScrolling = true;
+            setTimeout(() => {
+              scrollDirection = 1;
+              pauseScrolling = false;
+            }, 3000); // Pause 3 seconds at top
+          } else {
+            // Continue scrolling in current direction
+            scrollContainer.scrollBy({
+              top: scrollDirection * 1, // Slow smooth scroll
+              behavior: 'smooth'
+            });
+          }
+        }, 50); // Scroll every 50ms for smooth movement
+      };
+      
+      // Start scrolling after initial delay
+      const initialDelay = setTimeout(startAutoScroll, 5000);
+      
+      return () => {
+        clearTimeout(initialDelay);
+        clearInterval(scrollInterval);
+      };
+    }, [appointments, isEmpty]);
+    
+    return (
+      <div className="flex-1">
+        <h2 className="text-2xl font-bold text-gray-800 mb-6 text-center">{title}</h2>
+        <div 
+          ref={scrollRef}
+          className="space-y-3 max-h-96 overflow-y-auto pr-2"
+          style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+        >
+          <style jsx>{`
+            div::-webkit-scrollbar {
+              display: none;
+            }
+          `}</style>
+          {isEmpty ? (
+            <div className="text-center text-gray-500 py-8">
+              <div className="text-4xl mb-2">📅</div>
+              <div>No appointments scheduled</div>
+            </div>
+          ) : (
+            appointments.map((appointment, index) => (
+              <AppointmentCard key={index} appointment={appointment} />
+            ))
+          )}
+        </div>
       </div>
-    </div>
-  );
+    );
+  };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
