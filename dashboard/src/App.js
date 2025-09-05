@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { createClient } from '@supabase/supabase-js';
 
-// Location mapping
+// Location mapping - store numbers to display names
 const LOCATIONS = {
   '4182': 'State Street',
   '1396': 'Santa Barbara', 
@@ -11,6 +11,18 @@ const LOCATIONS = {
   '1002': 'San Luis Obispo',
   '1932': 'Atascadero',
   '2911': 'Paso Robles'
+};
+
+// Map store numbers to the actual location_business_id values in the database
+const LOCATION_BUSINESS_IDS = {
+  '4182': 'State Street Jiffy Lube MultiCare',
+  '1396': 'Santa Barbara Jiffy Lube MultiCare', 
+  '1257': 'Goleta Jiffy Lube MultiCare',
+  '609': 'Santa Maria Jiffy Lube MultiCare',
+  '1270': 'Arroyo Grande Jiffy Lube MultiCare',
+  '1002': 'San Luis Obispo Jiffy Lube MultiCare',
+  '1932': 'Atascadero Jiffy Lube MultiCare',
+  '2911': 'Paso Robles Jiffy Lube MultiCare'
 };
 
 // Get location from URL parameter or default to State Street
@@ -84,7 +96,7 @@ const Dashboard = () => {
       const { data, error } = await supabase
         .from('daily_appointments')
         .select('*')
-        .eq('location_id', CURRENT_LOCATION)
+        .eq('location_business_id', LOCATION_BUSINESS_IDS[CURRENT_LOCATION])
         .in('appointment_date', [today, tomorrow])
         .order('appointment_time', { ascending: true });
 
@@ -137,10 +149,8 @@ const Dashboard = () => {
   const renderServices = (appointment) => {
     const services = [];
     
-    // Collect all service fields
-    if (appointment.service_type) services.push(appointment.service_type);
-    if (appointment.service_type_2) services.push(appointment.service_type_2);
-    if (appointment.service_type_3) services.push(appointment.service_type_3);
+    // Collect all service fields based on actual table structure
+    if (appointment.offering_name) services.push(appointment.offering_name);
     
     if (services.length === 0) return <span className="text-gray-500">No service listed</span>;
     
@@ -165,19 +175,19 @@ const Dashboard = () => {
               {formatTime(appointment.appointment_time)}
             </span>
             <span className="text-lg font-semibold text-gray-800">
-              {appointment.customer_name || 'Walk-in'}
+              {appointment.customer_name || `${appointment.client_first_name || ''} ${appointment.client_last_name || ''}`.trim() || 'Walk-in'}
             </span>
           </div>
           <div className="text-gray-700">
             {renderServices(appointment)}
           </div>
-          {appointment.booking_status && (
+          {appointment.booking_status_label && (
             <div className={`inline-block px-2 py-1 rounded text-xs mt-2 ${
-              appointment.booking_status.toLowerCase() === 'confirmed' 
+              appointment.booking_status_label.toLowerCase() === 'confirmed' 
                 ? 'bg-green-100 text-green-800' 
                 : 'bg-red-100 text-red-800'
             }`}>
-              {appointment.booking_status}
+              {appointment.booking_status_label}
             </div>
           )}
         </div>
