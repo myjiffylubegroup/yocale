@@ -14,14 +14,14 @@ const LOCATIONS = {
 };
 
 const LOCATION_URLS = {
-  '4182': '?store=4182',
-  '1396': '?store=1396',
-  '1257': '?store=1257', 
-  '609': '?store=609',
-  '1270': '?store=1270',
-  '1002': '?store=1002',
-  '1932': '?store=1932',
-  '2911': '?store=2911'
+  '4182': 'https://appt-state-street.onrender.com',
+  '1396': 'https://appt-santa-barbara.onrender.com',
+  '1257': 'https://appt-goleta.onrender.com', 
+  '609': 'https://appt-santa-maria.onrender.com',
+  '1270': 'https://appt-arroyo-grande.onrender.com',
+  '1002': 'https://appt-san-luis-obispo.onrender.com',
+  '1932': 'https://appt-atascadero.onrender.com',
+  '2911': 'https://appt-paso-robles.onrender.com'
 };
 
 // Default to State Street for demo, but this will be set via environment variable
@@ -111,7 +111,7 @@ const Dashboard = () => {
       clearInterval(timeInterval);
       clearInterval(dataInterval);
     };
-  }, []);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const filterAppointmentsByDate = (dateString) => {
     return appointments.filter(apt => {
