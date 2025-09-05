@@ -65,7 +65,34 @@ const Dashboard = () => {
   };
 
   const formatTime = (appointment) => {
-    return appointment.appointment_time_12h || 'No time';
+    let timeString = appointment.appointment_time_12h;
+    
+    if (!timeString || timeString === 'No time') return 'No time';
+    
+    try {
+      // Parse the time and subtract 7 hours to convert from UTC to Pacific
+      const [time, period] = timeString.split(' ');
+      const [hours, minutes] = time.split(':');
+      let hour24 = parseInt(hours);
+      
+      // Convert to 24-hour format
+      if (period === 'PM' && hour24 !== 12) hour24 += 12;
+      if (period === 'AM' && hour24 === 12) hour24 = 0;
+      
+      // Subtract 7 hours to convert UTC to Pacific
+      hour24 -= 7;
+      
+      // Handle day rollover
+      if (hour24 < 0) hour24 += 24;
+      
+      // Convert back to 12-hour format
+      const period12 = hour24 >= 12 ? 'PM' : 'AM';
+      const displayHour = hour24 > 12 ? hour24 - 12 : (hour24 === 0 ? 12 : hour24);
+      
+      return `${displayHour}:${minutes} ${period12}`;
+    } catch (error) {
+      return timeString; // Return original if parsing fails
+    }
   };
 
   const fetchAppointments = async () => {
