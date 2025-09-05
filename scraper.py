@@ -1,4 +1,4 @@
-# scraper.py - Kibana scraper with integrated login
+# scraper.py - Kibana scraper with integrated login and full debugging
 import os
 import asyncio
 import pandas as pd
@@ -500,55 +500,125 @@ class KibanaWebScraper:
         if df.empty:
             return df
         
-        # Clean up column names and map to standard format
-        column_mapping = {
-            'bookingId': 'booking_id',
-            'client.firstName': 'first_name',
-            'client.lastName': 'last_name',
-            'client.email': 'email',
-            'offering.name': 'service_type',
-            'startDateTime': 'appointment_datetime',
-            'location.businessName': 'location_name',
-            'location.businessId': 'location_id',
-            'bookingStatus.label': 'status',
-            'isGoogleBooking': 'is_google_booking'
-        }
+        # Debug: Let's see exactly what we extracted
+        logger.info("=== DEBUGGING EXTRACTED DATA ===")
+        logger.info(f"DataFrame shape: {df.shape}")
+        logger.info(f"DataFrame columns: {list(df.columns)}")
         
-        # Apply mappings for available columns
-        for old_col, new_col in column_mapping.items():
-            if old_col in df.columns:
-                df[new_col] = df[old_col]
+        # Check if startDateTime column exists and what it contains
+        if 'startDateTime' in df.columns:
+            logger.info("startDateTime column found!")
+            logger.info(f"startDateTime data type: {df['startDateTime'].dtype}")
+            logger.info(f"startDateTime sample values:")
+            for i in range(min(5, len(df))):
+                val = df['startDateTime'].iloc[i]
+                logger.info(f"  Row {i}: '{val}' (type: {type(val)})")
+        else:
+            logger.error("startDateTime column NOT found!")
+            logger.info("Available columns:")
+            for col in df.columns:
+                logger.info(f"  - '{col}'")
         
-        # Create customer name from first and last name
-        if 'first_name' in df.columns and 'last_name' in df.columns:
-            df['customer_name'] = (df['first_name'].fillna('') + ' ' + df['last_name'].fillna('')).str.strip()
+        # Simple column mapping using exact Kibana column names
+        logger.info("=== MAPPING COLUMNS ===")
+        df['booking_id'] = df['bookingId']
+        df['time_column'] = df['Time'] 
+        df['location_business_name'] = df['location.businessName']
+        df['location_business_id'] = df['location.businessId']
+        df['client_last_name'] = df['client.lastName']
+        df['is_google_booking'] = df['isGoogleBooking']
+        df['offering_name'] = df['offering.name']
+        df['client_first_name'] = df['client.firstName']
+        df['client_email'] = df['client.email']
+        df['booking_status_label'] = df['bookingStatus.label']
+        df['start_date_time'] = df['startDateTime']
         
-        # Parse appointment datetime
-        if 'appointment_datetime' in df.columns:
+        # Create customer name
+        df['customer_name'] = (df['client_first_name'].fillna('') + ' ' + df['client_last_name'].fillna('')).str.strip()
+        
+        # Debug the mapped start_date_time column
+        logger.info("=== MAPPED start_date_time VALUES ===")
+        logger.info(f"start_date_time data type: {df['start_date_time'].dtype}")
+        logger.info(f"start_date_time sample values:")
+        for i in range(min(5, len(df))):
+            val = df['start_date_time'].iloc[i]
+            logger.info(f"  Row {i}: '{val}' (type: {type(val)})")
+        
+        # Test parsing one value manually
+        if len(df) > 0:
+            test_value = df['start_date_time'].iloc[0]
+            logger.info(f"=== TESTING MANUAL PARSE ===")
+            logger.info(f"Test value: '{test_value}'")
+            
+            if pd.isna(test_value):
+                logger.error("Test value is NaN!")
+            elif test_value == '' or test_value == '-':
+                logger.error("Test value is empty or dash!")
+            else:
+                try:
+                    clean_str = str(test_value).replace(' @ ', ' ').strip()
+                    logger.info(f"Cleaned string: '{clean_str}'")
+                    
+                    parsed = pd.to_datetime(clean_str, errors='coerce')
+                    logger.info(f"Parsed result: {parsed}")
+                    logger.info(f"Parsed type: {type(parsed)}")
+                    
+                    if pd.isna(parsed):
+                        logger.error("Parsing resulted in NaT!")
+                        
+                        # Try alternative parsing methods
+                        logger.info("Trying alternative parsing methods...")
+                        
+                        try:
+                            # Try without milliseconds
+                            if '.000' in clean_str:
+                                clean_str2 = clean_str.replace('.000', '')
+                                parsed2 = pd.to_datetime(clean_str2, errors='coerce')
+                                logger.info(f"Without .000: '{clean_str2}' -> {parsed2}")
+                        except Exception as e:
+                            logger.info(f"Alternative parsing failed: {e}")
+                            
+                except Exception as e:
+                    logger.error(f"Manual parsing failed: {e}")
+        
+        # Now apply parsing to all rows with detailed logging
+        def parse_datetime_with_logging(dt_str):
+            if pd.isna(dt_str) or dt_str == '' or dt_str == '-':
+                return pd.NaT
+            
             try:
-                # Handle different date formats that might appear
-                df['appointment_datetime'] = pd.to_datetime(df['appointment_datetime'], errors='coerce')
-                df['appointment_date'] = df['appointment_datetime'].dt.date
-                df['appointment_time'] = df['appointment_datetime'].dt.strftime('%H:%M')
-                df['appointment_time_12h'] = df['appointment_datetime'].dt.strftime('%I:%M %p')
-                
-                # Filter for target date if specified (disabled to get all 15-day data)
-                # if target_date:
-                #     target_date_obj = target_date.date()
-                #     df = df[df['appointment_date'] == target_date_obj]
-                #     logger.info(f"Filtered to {len(df)} appointments for {target_date_obj}")
-                
-                # Log the date range of appointments found
-                if not df['appointment_date'].isna().all():
-                    date_range = f"{df['appointment_date'].min()} to {df['appointment_date'].max()}"
-                    logger.info(f"Found appointments from {date_range} (total: {len(df)})")
-                
+                clean_str = str(dt_str).replace(' @ ', ' ').strip()
+                parsed = pd.to_datetime(clean_str, errors='coerce')
+                return parsed
             except Exception as e:
-                logger.warning(f"Error parsing appointment_datetime: {e}")
-                # If datetime parsing fails, don't filter by date
-                df['appointment_date'] = None
-                df['appointment_time'] = None
-                df['appointment_time_12h'] = None
+                logger.warning(f"Parse failed for '{dt_str}': {e}")
+                return pd.NaT
+        
+        logger.info("=== APPLYING PARSING TO ALL ROWS ===")
+        df['appointment_datetime'] = df['start_date_time'].apply(parse_datetime_with_logging)
+        
+        # Check results
+        valid_count = df['appointment_datetime'].notna().sum()
+        logger.info(f"Successfully parsed {valid_count} out of {len(df)} values")
+        
+        if valid_count > 0:
+            logger.info("Successfully parsed examples:")
+            success_mask = df['appointment_datetime'].notna()
+            success_df = df[success_mask]
+            for i in range(min(3, len(success_df))):
+                orig = success_df['start_date_time'].iloc[i]
+                parsed = success_df['appointment_datetime'].iloc[i]
+                logger.info(f"  '{orig}' -> {parsed}")
+                
+            # Create date/time fields
+            df['appointment_date'] = df['appointment_datetime'].dt.date
+            df['appointment_time'] = df['appointment_datetime'].dt.strftime('%H:%M')
+            df['appointment_time_12h'] = df['appointment_datetime'].dt.strftime('%I:%M %p')
+        else:
+            logger.error("NO VALUES WERE SUCCESSFULLY PARSED!")
+            df['appointment_date'] = None
+            df['appointment_time'] = None
+            df['appointment_time_12h'] = None
         
         # Clean up booking IDs - remove any non-numeric entries
         if 'booking_id' in df.columns:
@@ -557,9 +627,9 @@ class KibanaWebScraper:
             df = df[df['booking_id'].str.isdigit()]
         
         # Filter out canceled appointments if desired (optional)
-        if 'status' in df.columns:
+        if 'booking_status_label' in df.columns:
             # Keep all statuses for now, but log the distribution
-            status_counts = df['status'].value_counts()
+            status_counts = df['booking_status_label'].value_counts()
             logger.info(f"Status distribution: {status_counts.to_dict()}")
         
         # Add metadata
@@ -630,7 +700,14 @@ class KibanaWebScraper:
                     elif isinstance(value, (pd.Timestamp, datetime)):
                         record[key] = value.isoformat()
                     elif hasattr(value, 'date') and callable(getattr(value, 'date')):
-                        record[key] = value.date().isoformat()
+                        # Handle datetime.date objects
+                        record[key] = value.isoformat()
+                    elif isinstance(value, pd._libs.tslibs.nattype.NaTType):
+                        # Handle pandas NaT (Not a Time) values
+                        record[key] = None
+                    elif str(value) == 'NaT':
+                        # Handle string representations of NaT
+                        record[key] = None
             
             # Insert data into Supabase
             result = self.supabase.table('daily_appointments').upsert(
