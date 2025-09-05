@@ -708,6 +708,15 @@ class KibanaWebScraper:
                     elif str(value) == 'NaT':
                         # Handle string representations of NaT
                         record[key] = None
+                    elif hasattr(value, 'isoformat'):
+                        # Handle any other datetime-like objects including datetime.date
+                        record[key] = value.isoformat()
+                    elif isinstance(value, (int, float, str, bool)) or value is None:
+                        # Keep simple types as-is
+                        record[key] = value
+                    else:
+                        # Convert anything else to string as fallback
+                        record[key] = str(value)
             
             # Insert data into Supabase
             result = self.supabase.table('daily_appointments').upsert(
