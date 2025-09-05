@@ -321,7 +321,7 @@ const Dashboard = () => {
     
     return (
       <div className="flex-1">
-        <h2 className="text-3xl font-bold text-gray-900 mb-8 text-center bg-gradient-to-r from-red-600 to-red-700 bg-clip-text text-transparent">
+        <h2 className="text-lg font-bold text-gray-900 mb-3 text-center bg-gradient-to-r from-red-600 to-red-700 bg-clip-text text-transparent">
           {title}
         </h2>
         <div 
@@ -352,19 +352,19 @@ const Dashboard = () => {
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-100">
       {/* Header */}
-      <header className="bg-gradient-to-r from-red-600 to-red-700 text-white shadow-2xl">
-        <div className="max-w-7xl mx-auto px-8 py-6">
+      <header className="bg-gradient-to-r from-red-600 to-red-700 text-white shadow-xl">
+        <div className="max-w-7xl mx-auto px-6 py-4">
           <div className="flex justify-between items-center">
             <div>
-              <h1 className="text-4xl font-bold tracking-tight">
+              <h1 className="text-2xl font-bold tracking-tight">
                 {LOCATIONS[CURRENT_LOCATION]} Jiffy Lube®
               </h1>
-              <p className="text-red-100 text-lg font-medium mt-1">
+              <p className="text-red-100 text-sm font-medium">
                 Store #{CURRENT_LOCATION} • Appointment Dashboard
               </p>
             </div>
             <div className="text-right">
-              <div className="text-2xl font-semibold text-white">
+              <div className="text-lg font-semibold text-white">
                 {currentTime.toLocaleString('en-US', {
                   timeZone: 'America/Los_Angeles',
                   weekday: 'long',
@@ -373,7 +373,7 @@ const Dashboard = () => {
                   day: 'numeric'
                 })}
               </div>
-              <div className="text-lg text-red-100 font-medium">
+              <div className="text-sm text-red-100 font-medium">
                 {currentTime.toLocaleString('en-US', {
                   timeZone: 'America/Los_Angeles',
                   hour: 'numeric',
@@ -385,22 +385,20 @@ const Dashboard = () => {
           </div>
         </div>
         {/* Decorative wave */}
-        <div className="w-full h-4 bg-gradient-to-r from-red-500 to-red-600 relative">
-          <div className="absolute inset-0 bg-white/10 backdrop-blur-sm"></div>
-        </div>
+        <div className="w-full h-2 bg-gradient-to-r from-red-500 to-red-600"></div>
       </header>
 
       {/* Main Content */}
-      <main className="max-w-7xl mx-auto px-8 py-10">
+      <main className="max-w-7xl mx-auto px-6 py-6">
         {loading ? (
-          <div className="flex justify-center items-center py-32">
+          <div className="flex justify-center items-center py-20">
             <div className="text-center">
-              <div className="animate-spin rounded-full h-16 w-16 border-b-4 border-red-600 mx-auto mb-6"></div>
-              <div className="text-2xl text-gray-600 font-medium">Loading appointments...</div>
+              <div className="animate-spin rounded-full h-12 w-12 border-b-4 border-red-600 mx-auto mb-4"></div>
+              <div className="text-xl text-gray-600 font-medium">Loading appointments...</div>
             </div>
           </div>
         ) : (
-          <div className="flex gap-12">
+          <div className="flex gap-8">
             <AppointmentColumn 
               title="Today's Appointments"
               appointments={todayAppointments}
@@ -415,29 +413,26 @@ const Dashboard = () => {
         )}
       </main>
 
-      {/* Location Navigation */}
-      <footer className="bg-white border-t-2 border-gray-200 mt-16 shadow-lg">
-        <div className="max-w-7xl mx-auto px-8 py-6">
-          <div className="text-center mb-4">
-            <h3 className="text-lg font-semibold text-gray-700">Switch Location</h3>
-          </div>
-          <div className="flex flex-wrap justify-center gap-3">
+      {/* Location Navigation - Compact Single Line */}
+      <footer className="bg-white border-t border-gray-200 mt-4 shadow-sm">
+        <div className="max-w-7xl mx-auto px-4 py-2">
+          <div className="flex justify-center items-center gap-1 flex-wrap">
             {Object.entries(LOCATIONS).map(([locationId, locationName]) => (
               <a
                 key={locationId}
                 href={`${window.location.pathname}?store=${locationId}`}
-                className={`px-6 py-3 rounded-lg font-semibold transition-all duration-200 transform hover:scale-105 shadow-md ${
+                className={`px-2 py-1 rounded text-xs font-medium transition-colors whitespace-nowrap ${
                   locationId === CURRENT_LOCATION
-                    ? 'bg-gradient-to-r from-red-600 to-red-700 text-white shadow-lg'
-                    : 'bg-white text-gray-700 hover:bg-red-50 hover:text-red-600 border border-gray-200'
+                    ? 'bg-red-600 text-white'
+                    : 'bg-gray-100 text-gray-700 hover:bg-red-50 hover:text-red-600'
                 }`}
               >
                 {locationName}
               </a>
             ))}
           </div>
-          <div className="text-center mt-4 text-sm text-gray-500">
-            © 2025 Jiffy Lube International, Inc. All rights reserved.
+          <div className="text-center mt-1 text-xs text-gray-400">
+            © 2025 Jiffy Lube International, Inc.
           </div>
         </div>
       </footer>
