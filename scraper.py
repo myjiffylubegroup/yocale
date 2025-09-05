@@ -453,9 +453,9 @@ class KibanaWebScraper:
                         if appointment.get('bookingId') and appointment.get('bookingId') != '-':
                             appointments.append(appointment)
                             
-                        # Limit to prevent timeout - process first 100 rows
-                        if i >= 100:
-                            logger.info("Processed 100 rows, stopping to prevent timeout")
+                        # Process more rows but with a reasonable limit to prevent infinite loops
+                        if i >= 500:
+                            logger.info("Processed 500 rows, stopping to prevent timeout")
                             break
                             
                 except Exception as e:
