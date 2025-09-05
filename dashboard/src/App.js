@@ -236,10 +236,10 @@ const Dashboard = () => {
     
     return (
       <div>
-        <div>{appointment.services[0]}</div>
+        <div className="font-medium text-gray-800">{appointment.services[0]}</div>
         {appointment.services.slice(1).map((service, index) => (
-          <div key={index} className="text-sm text-gray-600 ml-4">
-            {service}
+          <div key={index} className="text-sm text-gray-600 ml-4 mt-1">
+            • {service}
           </div>
         ))}
       </div>
@@ -247,18 +247,18 @@ const Dashboard = () => {
   };
 
   const AppointmentCard = ({ appointment }) => (
-    <div className="bg-white rounded-lg shadow-md p-4 mb-3 border-l-4 border-blue-500">
+    <div className="bg-white rounded-xl shadow-lg p-5 mb-4 border-l-6 border-red-600 hover:shadow-xl transition-all duration-300 transform hover:scale-[1.02]">
       <div className="flex justify-between items-start">
         <div className="flex-1">
-          <div className="flex items-center gap-4 mb-2">
-            <span className="text-lg font-bold text-blue-600">
+          <div className="flex items-center gap-4 mb-3">
+            <span className="text-2xl font-bold text-red-600 bg-red-50 px-3 py-1 rounded-lg">
               {formatTime(appointment)}
             </span>
-            <span className="text-lg font-semibold text-gray-800">
+            <span className="text-xl font-semibold text-gray-900">
               {appointment.customer_name}
             </span>
           </div>
-          <div className="text-gray-700">
+          <div className="text-gray-700 pl-2">
             {renderServices(appointment)}
           </div>
         </div>
@@ -321,10 +321,12 @@ const Dashboard = () => {
     
     return (
       <div className="flex-1">
-        <h2 className="text-2xl font-bold text-gray-800 mb-6 text-center">{title}</h2>
+        <h2 className="text-3xl font-bold text-gray-900 mb-8 text-center bg-gradient-to-r from-red-600 to-red-700 bg-clip-text text-transparent">
+          {title}
+        </h2>
         <div 
           ref={scrollRef}
-          className="space-y-3 max-h-96 overflow-y-auto pr-2"
+          className="space-y-4 max-h-96 overflow-y-auto pr-2"
           style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
         >
           <style jsx>{`
@@ -333,9 +335,9 @@ const Dashboard = () => {
             }
           `}</style>
           {isEmpty ? (
-            <div className="text-center text-gray-500 py-8">
-              <div className="text-4xl mb-2">📅</div>
-              <div>No appointments scheduled</div>
+            <div className="text-center text-gray-500 py-12 bg-gray-50 rounded-xl">
+              <div className="text-6xl mb-4">🗓️</div>
+              <div className="text-xl font-medium">No appointments scheduled</div>
             </div>
           ) : (
             appointments.map((appointment, index) => (
@@ -348,19 +350,21 @@ const Dashboard = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
+    <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-100">
       {/* Header */}
-      <header className="bg-white shadow-lg">
-        <div className="max-w-7xl mx-auto px-6 py-4">
+      <header className="bg-gradient-to-r from-red-600 to-red-700 text-white shadow-2xl">
+        <div className="max-w-7xl mx-auto px-8 py-6">
           <div className="flex justify-between items-center">
             <div>
-              <h1 className="text-3xl font-bold text-gray-900">
-                {LOCATIONS[CURRENT_LOCATION]} Jiffy Lube
+              <h1 className="text-4xl font-bold tracking-tight">
+                {LOCATIONS[CURRENT_LOCATION]} Jiffy Lube®
               </h1>
-              <p className="text-gray-600">Store #{CURRENT_LOCATION}</p>
+              <p className="text-red-100 text-lg font-medium mt-1">
+                Store #{CURRENT_LOCATION} • Appointment Dashboard
+              </p>
             </div>
             <div className="text-right">
-              <div className="text-lg font-semibold text-gray-800">
+              <div className="text-2xl font-semibold text-white">
                 {currentTime.toLocaleString('en-US', {
                   timeZone: 'America/Los_Angeles',
                   weekday: 'long',
@@ -369,7 +373,7 @@ const Dashboard = () => {
                   day: 'numeric'
                 })}
               </div>
-              <div className="text-sm text-gray-600">
+              <div className="text-lg text-red-100 font-medium">
                 {currentTime.toLocaleString('en-US', {
                   timeZone: 'America/Los_Angeles',
                   hour: 'numeric',
@@ -380,16 +384,23 @@ const Dashboard = () => {
             </div>
           </div>
         </div>
+        {/* Decorative wave */}
+        <div className="w-full h-4 bg-gradient-to-r from-red-500 to-red-600 relative">
+          <div className="absolute inset-0 bg-white/10 backdrop-blur-sm"></div>
+        </div>
       </header>
 
       {/* Main Content */}
-      <main className="max-w-7xl mx-auto px-6 py-8">
+      <main className="max-w-7xl mx-auto px-8 py-10">
         {loading ? (
-          <div className="flex justify-center items-center py-20">
-            <div className="text-xl text-gray-600">Loading appointments...</div>
+          <div className="flex justify-center items-center py-32">
+            <div className="text-center">
+              <div className="animate-spin rounded-full h-16 w-16 border-b-4 border-red-600 mx-auto mb-6"></div>
+              <div className="text-2xl text-gray-600 font-medium">Loading appointments...</div>
+            </div>
           </div>
         ) : (
-          <div className="flex gap-8">
+          <div className="flex gap-12">
             <AppointmentColumn 
               title="Today's Appointments"
               appointments={todayAppointments}
@@ -405,22 +416,28 @@ const Dashboard = () => {
       </main>
 
       {/* Location Navigation */}
-      <footer className="bg-white border-t mt-12">
-        <div className="max-w-7xl mx-auto px-6 py-4">
-          <div className="flex flex-wrap justify-center gap-2">
+      <footer className="bg-white border-t-2 border-gray-200 mt-16 shadow-lg">
+        <div className="max-w-7xl mx-auto px-8 py-6">
+          <div className="text-center mb-4">
+            <h3 className="text-lg font-semibold text-gray-700">Switch Location</h3>
+          </div>
+          <div className="flex flex-wrap justify-center gap-3">
             {Object.entries(LOCATIONS).map(([locationId, locationName]) => (
               <a
                 key={locationId}
                 href={`${window.location.pathname}?store=${locationId}`}
-                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                className={`px-6 py-3 rounded-lg font-semibold transition-all duration-200 transform hover:scale-105 shadow-md ${
                   locationId === CURRENT_LOCATION
-                    ? 'bg-blue-600 text-white'
-                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                    ? 'bg-gradient-to-r from-red-600 to-red-700 text-white shadow-lg'
+                    : 'bg-white text-gray-700 hover:bg-red-50 hover:text-red-600 border border-gray-200'
                 }`}
               >
                 {locationName}
               </a>
             ))}
+          </div>
+          <div className="text-center mt-4 text-sm text-gray-500">
+            © 2025 Jiffy Lube International, Inc. All rights reserved.
           </div>
         </div>
       </footer>
