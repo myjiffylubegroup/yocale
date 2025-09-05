@@ -13,18 +13,6 @@ const LOCATIONS = {
   '2911': 'Paso Robles'
 };
 
-// Map store numbers to the actual location_business_id values in the database
-const LOCATION_BUSINESS_IDS = {
-  '4182': 'State Street Jiffy Lube MultiCare',
-  '1396': 'Santa Barbara Jiffy Lube MultiCare', 
-  '1257': 'Goleta Jiffy Lube MultiCare',
-  '609': 'Santa Maria Jiffy Lube MultiCare',
-  '1270': 'Arroyo Grande Jiffy Lube MultiCare',
-  '1002': 'San Luis Obispo Jiffy Lube MultiCare',
-  '1932': 'Atascadero Jiffy Lube MultiCare',
-  '2911': 'Paso Robles Jiffy Lube MultiCare'
-};
-
 // Get location from URL parameter or default to State Street
 const getLocationFromURL = () => {
   const urlParams = new URLSearchParams(window.location.search);
