@@ -64,21 +64,8 @@ const Dashboard = () => {
     return tomorrow.toISOString().split('T')[0];
   };
 
-  const formatTime = (timeString) => {
-    if (!timeString) return 'No time';
-    
-    try {
-      // Parse the time string and format in Pacific Time
-      const date = new Date(timeString);
-      return date.toLocaleString('en-US', {
-        timeZone: 'America/Los_Angeles',
-        hour: 'numeric',
-        minute: '2-digit',
-        hour12: true
-      });
-    } catch (error) {
-      return timeString;
-    }
+  const formatTime = (appointment) => {
+    return appointment.appointment_time_12h || 'No time';
   };
 
   const fetchAppointments = async () => {
@@ -135,6 +122,35 @@ const Dashboard = () => {
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  const groupAppointmentsByCustomer = (appointments) => {
+    const grouped = {};
+    
+    appointments.forEach(apt => {
+      const customerName = apt.customer_name || `${apt.client_first_name || ''} ${apt.client_last_name || ''}`.trim() || 'Walk-in';
+      const timeKey = apt.appointment_time_12h || 'No time';
+      const key = `${customerName}-${timeKey}`;
+      
+      if (!grouped[key]) {
+        grouped[key] = {
+          customer_name: customerName,
+          appointment_time_12h: apt.appointment_time_12h,
+          services: []
+        };
+      }
+      
+      if (apt.offering_name) {
+        grouped[key].services.push(apt.offering_name);
+      }
+    });
+    
+    // Sort by time
+    return Object.values(grouped).sort((a, b) => {
+      if (!a.appointment_time_12h) return 1;
+      if (!b.appointment_time_12h) return -1;
+      return a.appointment_time_12h.localeCompare(b.appointment_time_12h);
+    });
+  };
+
   const filterAppointmentsByDate = (dateString) => {
     return appointments.filter(apt => {
       if (!apt.appointment_date) return false;
@@ -143,21 +159,18 @@ const Dashboard = () => {
     });
   };
 
-  const todayAppointments = filterAppointmentsByDate(getTodayPacific());
-  const tomorrowAppointments = filterAppointmentsByDate(getTomorrowPacific());
+  const todayAppointments = groupAppointmentsByCustomer(filterAppointmentsByDate(getTodayPacific()));
+  const tomorrowAppointments = groupAppointmentsByCustomer(filterAppointmentsByDate(getTomorrowPacific()));
 
   const renderServices = (appointment) => {
-    const services = [];
-    
-    // Collect all service fields based on actual table structure
-    if (appointment.offering_name) services.push(appointment.offering_name);
-    
-    if (services.length === 0) return <span className="text-gray-500">No service listed</span>;
+    if (!appointment.services || appointment.services.length === 0) {
+      return <span className="text-gray-500">No service listed</span>;
+    }
     
     return (
       <div>
-        <div>{services[0]}</div>
-        {services.slice(1).map((service, index) => (
+        <div>{appointment.services[0]}</div>
+        {appointment.services.slice(1).map((service, index) => (
           <div key={index} className="text-sm text-gray-600 ml-4">
             {service}
           </div>
