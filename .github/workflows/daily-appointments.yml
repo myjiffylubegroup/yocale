@@ -37,7 +37,8 @@ jobs:
     - name: Run daily scraping
       env:
         KIBANA_BASE_URL: ${{ secrets.KIBANA_BASE_URL }}
-        KIBANA_SESSION_COOKIE: ${{ secrets.KIBANA_SESSION_COOKIE }}
+        KIBANA_USERNAME: ${{ secrets.KIBANA_USERNAME }}
+        KIBANA_PASSWORD: ${{ secrets.KIBANA_PASSWORD }}
         SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
         SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
       run: python scraper.py
@@ -46,15 +47,59 @@ jobs:
       if: failure()
       uses: actions/upload-artifact@v4
       with:
-        name: debug-screenshots
+        name: debug-screenshots-${{ github.run_number }}
         path: |
           *.png
           *.html
+          *.json
+          *.txt
         retention-days: 7
+        
+    - name: Upload debug artifacts on success (limited)
+      if: success()
+      uses: actions/upload-artifact@v4
+      with:
+        name: success-screenshots-${{ github.run_number }}
+        path: |
+          login_success*.png
+          discover_ready.png
+          data_extracted.png
+        retention-days: 3
+        if-no-files-found: ignore
         
     - name: Notify on failure
       if: failure()
       uses: actions/github-script@v7
       with:
         script: |
-          core.setFailed('Daily appointment scraping failed')
+          const fs = require('fs');
+          
+          // Try to read any error logs or debug info
+          let errorDetails = 'Daily appointment scraping failed';
+          
+          try {
+            // Check if there are any debug files to help with troubleshooting
+            const files = fs.readdirSync('.');
+            const debugFiles = files.filter(f => f.endsWith('.html') || f.endsWith('.txt'));
+            
+            if (debugFiles.length > 0) {
+              errorDetails += `. Debug files created: ${debugFiles.join(', ')}`;
+            }
+          } catch (e) {
+            // Ignore file reading errors
+          }
+          
+          core.setFailed(errorDetails);
+          
+    - name: Summary
+      if: always()
+      run: |
+        echo "## Scraping Summary" >> $GITHUB_STEP_SUMMARY
+        echo "- **Date:** $(date)" >> $GITHUB_STEP_SUMMARY
+        echo "- **Status:** ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
+        
+        # List any debug files created
+        if ls *.png *.html *.json *.txt 2>/dev/null; then
+          echo "- **Debug files created:**" >> $GITHUB_STEP_SUMMARY
+          ls *.png *.html *.json *.txt 2>/dev/null | head -10 | sed 's/^/  - /' >> $GITHUB_STEP_SUMMARY
+        fi
