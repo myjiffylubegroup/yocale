@@ -683,7 +683,7 @@ class KibanaWebScraper:
         return result_df
     
     def save_to_supabase(self, df):
-        """Save processed data to Supabase"""
+        """Save processed data to Supabase with proper duplicate handling"""
         if df.empty:
             logger.info("No data to save")
             return
@@ -718,17 +718,55 @@ class KibanaWebScraper:
                         # Convert anything else to string as fallback
                         record[key] = str(value)
             
-            # Insert data into Supabase
-            result = self.supabase.table('daily_appointments').upsert(
-                data_to_insert,
-                on_conflict='booking_id,data_date'
-            ).execute()
-            
-            logger.info(f"Successfully saved {len(data_to_insert)} records to Supabase")
-            return result
+            # Method 1: Try upsert with just booking_id as the conflict key
+            try:
+                result = self.supabase.table('daily_appointments').upsert(
+                    data_to_insert,
+                    on_conflict='booking_id'
+                ).execute()
+                
+                logger.info(f"Successfully upserted {len(data_to_insert)} records to Supabase")
+                return result
+                
+            except Exception as upsert_error:
+                logger.warning(f"Upsert failed: {upsert_error}")
+                logger.info("Trying alternative approach: filter out existing records")
+                
+                # Method 2: Check for existing booking_ids and filter them out
+                booking_ids = [record['booking_id'] for record in data_to_insert if record.get('booking_id')]
+                
+                if booking_ids:
+                    # Query existing records
+                    existing_result = self.supabase.table('daily_appointments').select('booking_id').in_('booking_id', booking_ids).execute()
+                    existing_booking_ids = {row['booking_id'] for row in existing_result.data}
+                    
+                    # Filter out existing records
+                    new_records = [record for record in data_to_insert if record.get('booking_id') not in existing_booking_ids]
+                    
+                    if new_records:
+                        # Insert only new records
+                        result = self.supabase.table('daily_appointments').insert(new_records).execute()
+                        logger.info(f"Successfully inserted {len(new_records)} new records to Supabase")
+                        logger.info(f"Skipped {len(data_to_insert) - len(new_records)} existing records")
+                        return result
+                    else:
+                        logger.info("All records already exist in database - no new records to insert")
+                        return {"data": [], "status": "no_new_records"}
+                else:
+                    logger.warning("No valid booking_ids found in data")
+                    return {"data": [], "status": "no_booking_ids"}
             
         except Exception as e:
             logger.error(f"Error saving to Supabase: {e}")
+            
+            # For debugging, save the data that failed to insert
+            try:
+                with open('failed_insert_data.json', 'w') as f:
+                    json.dump(data_to_insert, f, indent=2, default=str)
+                logger.info("Saved failed insert data to failed_insert_data.json for debugging")
+            except:
+                pass
+                
             raise
     
     async def run_daily_scraping(self, target_date=None):
