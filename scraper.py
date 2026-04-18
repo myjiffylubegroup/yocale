@@ -1,6 +1,7 @@
 # scraper.py - Kibana scraper with integrated login and full debugging
 import os
 import asyncio
+import time
 import pandas as pd
 from datetime import datetime, timedelta
 from playwright.async_api import async_playwright
@@ -254,29 +255,49 @@ class KibanaWebScraper:
         """Navigate to the discover page with 15-day appointment data"""
         # Use the 15-day rolling window URL which is more reliable
         discover_url = f"{self.kibana_base_url}/app/discover#/view/84b881a0-6b52-11f0-89e0-f9470fca93e5?_g=(filters%3A!()%2CrefreshInterval%3A(pause%3A!t%2Cvalue%3A0)%2Ctime%3A(from%3Anow-15d%2Cto%3Anow))"
-        
-        logger.info(f"Navigating to 15-day appointment data view...")
+
+        # Track where we are so the exception handler can report the failing step
+        nav_start = time.time()
+        current_step = "starting"
+
+        def step_log(msg):
+            """Log a message with elapsed time since navigate_to_discover began."""
+            elapsed = time.time() - nav_start
+            logger.info(f"[t={elapsed:6.2f}s] {msg}")
+
+        step_log(f"STEP: navigate_to_discover starting")
         logger.info(f"Target URL: {discover_url}")
-        
+
         try:
+            current_step = "page.goto()"
+            step_log(f"STEP: calling {current_step}")
             await page.goto(discover_url, timeout=45000)
-            
+            step_log(f"STEP: {current_step} returned")
+
             # Wait for the page to load completely
+            current_step = "wait_for_load_state('networkidle')"
+            step_log(f"STEP: {current_step}")
             await page.wait_for_load_state('networkidle', timeout=30000)
-            
+            step_log(f"STEP: networkidle complete")
+
             # Check if we got redirected back to login
+            current_step = "checking URL for login redirect"
+            step_log(f"STEP: {current_step}")
             current_url = page.url
             logger.info(f"Current page URL: {current_url}")
-            
+
             if "login" in current_url.lower() or "auth" in current_url.lower():
                 await page.screenshot(path='redirected_to_login.png')
                 raise Exception(f"Got redirected to login when trying to access discover page: {current_url}")
-            
-            logger.info("Discover page loaded")
-            
+
+            step_log("STEP: discover page URL looks good")
+
             # Take screenshot after navigation
+            current_step = "screenshot discover_loaded.png"
+            step_log(f"STEP: {current_step}")
             await page.screenshot(path='discover_loaded.png')
-            
+            step_log("STEP: screenshot complete")
+
             # Wait for data table to appear
             table_selectors = [
                 '[data-test-subj="discoverDocTable"]',
@@ -284,30 +305,35 @@ class KibanaWebScraper:
                 '.kuiTable',
                 'table'
             ]
-            
+
             table_found = False
             for selector in table_selectors:
+                current_step = f"wait_for_selector '{selector}' (15s)"
+                step_log(f"STEP: trying {current_step}")
                 try:
                     await page.wait_for_selector(selector, timeout=15000)
-                    logger.info(f"Found data table with selector: {selector}")
+                    step_log(f"STEP: found data table with selector: {selector}")
                     table_found = True
                     break
-                except:
+                except Exception as sel_exc:
+                    step_log(f"STEP: selector '{selector}' not found ({type(sel_exc).__name__})")
                     continue
-            
+
             if not table_found:
+                current_step = "no table found - gathering debug info"
+                step_log(f"STEP: {current_step}")
                 await page.screenshot(path='no_table_found.png')
-                
+
                 # Save page content for debugging
                 content = await page.content()
                 with open('discover_page_debug.html', 'w') as f:
                     f.write(content)
-                
+
                 # Get page title and any error messages
                 page_title = await page.title()
                 logger.error(f"No data table found on page: {page_title}")
                 logger.error(f"Current URL: {current_url}")
-                
+
                 # Look for any error messages on the page
                 try:
                     error_text = await page.evaluate('''() => {
@@ -318,32 +344,44 @@ class KibanaWebScraper:
                         logger.error(f"Error messages on page: {error_text}")
                 except:
                     pass
-                
+
                 raise Exception(f"No data table found on discover page. URL: {current_url}, Title: {page_title}")
-            
+
             # Wait a bit more for data to populate
-            logger.info("Waiting for data to populate...")
+            current_step = "wait 8s for data to populate"
+            step_log(f"STEP: {current_step}")
             await page.wait_for_timeout(8000)
-            
+
             # Final screenshot
+            current_step = "screenshot discover_ready.png"
+            step_log(f"STEP: {current_step}")
             await page.screenshot(path='discover_ready.png')
-            logger.info("Discover page ready for data extraction")
-            
+            step_log("STEP: discover page ready for data extraction")
+
         except Exception as e:
+            # Log exactly where we were when it failed
+            elapsed = time.time() - nav_start
+            logger.error(f"[t={elapsed:6.2f}s] FAILED at step: {current_step}")
+            logger.error(f"Exception type: {type(e).__name__}")
+            logger.error(f"Exception message: {e}")
+
             # Take error screenshot and save page content
-            await page.screenshot(path='discover_navigation_error.png')
-            
+            try:
+                await page.screenshot(path='discover_navigation_error.png')
+            except Exception as shot_exc:
+                logger.error(f"Could not take error screenshot: {shot_exc}")
+
             try:
                 content = await page.content()
                 with open('discover_navigation_error.html', 'w') as f:
                     f.write(content)
-                    
+
                 current_url = page.url
                 page_title = await page.title()
                 logger.error(f"Navigation failed. URL: {current_url}, Title: {page_title}")
             except:
                 pass
-                
+
             raise
     
     async def extract_appointment_data(self, page):
