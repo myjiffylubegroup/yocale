@@ -31,7 +31,31 @@ class KibanaWebScraper:
         
         # Initialize Supabase client
         self.supabase: Client = create_client(self.supabase_url, self.supabase_key)
-    
+
+    async def safe_screenshot(self, page, path, timeout=5000):
+        """Take a screenshot, but never block the scraper if it hangs or fails.
+
+        Debug artifacts are ephemeral on Render (filesystem is destroyed after
+        each run) and only surfaced on GitHub Actions via artifact upload. The
+        scraper should never die because a debug screenshot timed out.
+        """
+        try:
+            await page.screenshot(path=path, timeout=timeout)
+        except Exception as e:
+            logger.info(f"Skipped screenshot '{path}': {type(e).__name__}: {e}")
+
+    async def safe_save_html(self, page, path):
+        """Save page HTML to disk, but never block the scraper if it fails.
+
+        Same reasoning as safe_screenshot — debug-only, best-effort.
+        """
+        try:
+            content = await page.content()
+            with open(path, 'w') as f:
+                f.write(content)
+        except Exception as e:
+            logger.info(f"Skipped HTML save '{path}': {type(e).__name__}: {e}")
+
     async def login_to_kibana(self, page):
         """Login to Kibana using username/password"""
         logger.info("=== Starting Kibana Login ===")
@@ -40,7 +64,7 @@ class KibanaWebScraper:
         logger.info(f"Step 1: Navigating to {self.kibana_base_url}")
         await page.goto(self.kibana_base_url, timeout=30000)
         await page.wait_for_load_state('networkidle', timeout=15000)
-        await page.screenshot(path='login_step1_initial.png')
+        await self.safe_screenshot(page, 'login_step1_initial.png')
         
         current_url = page.url
         page_title = await page.title()
@@ -71,7 +95,7 @@ class KibanaWebScraper:
             logger.info("Clicking Elasticsearch login button")
             await elasticsearch_button.click()
             await page.wait_for_load_state('networkidle', timeout=10000)
-            await page.screenshot(path='login_step2_elasticsearch_click.png')
+            await self.safe_screenshot(page, 'login_step2_elasticsearch_click.png')
             
             current_url = page.url
             page_title = await page.title()
@@ -104,16 +128,14 @@ class KibanaWebScraper:
                 continue
         
         if not username_field:
-            await page.screenshot(path='login_step3_no_username.png')
-            content = await page.content()
-            with open('login_step3_page_content.html', 'w') as f:
-                f.write(content)
+            await self.safe_screenshot(page, 'login_step3_no_username.png')
+            await self.safe_save_html(page, 'login_step3_page_content.html')
             raise Exception("Could not find username field")
         
         # Fill username using Playwright's fill() method
         await username_field.fill(self.kibana_username)
         logger.info(f"Filled username: {self.kibana_username}")
-        await page.screenshot(path='login_step3_username_filled.png')
+        await self.safe_screenshot(page, 'login_step3_username_filled.png')
         
         # Step 4: Find and fill password
         logger.info("Step 4: Looking for password field")
@@ -136,13 +158,13 @@ class KibanaWebScraper:
                 continue
         
         if not password_field:
-            await page.screenshot(path='login_step4_no_password.png')
+            await self.safe_screenshot(page, 'login_step4_no_password.png')
             raise Exception("Could not find password field")
         
         # Fill password using Playwright's fill() method
         await password_field.fill(self.kibana_password)
         logger.info("Filled password")
-        await page.screenshot(path='login_step4_password_filled.png')
+        await self.safe_screenshot(page, 'login_step4_password_filled.png')
         
         # Step 5: Submit the form
         logger.info("Step 5: Submitting login form")
@@ -174,7 +196,7 @@ class KibanaWebScraper:
             logger.info("No submit button found, trying Enter key")
             await password_field.press('Enter')
         
-        await page.screenshot(path='login_step5_after_submit.png')
+        await self.safe_screenshot(page, 'login_step5_after_submit.png')
         
         # Step 6: Wait and verify login success
         logger.info("Step 6: Verifying login success")
@@ -183,7 +205,7 @@ class KibanaWebScraper:
         # Check for login success over multiple attempts
         for i in range(3):
             await page.wait_for_timeout(3000)
-            await page.screenshot(path=f'login_step6_check_{i+1}.png')
+            await self.safe_screenshot(page, f'login_step6_check_{i+1}.png')
             
             current_url = page.url
             page_title = await page.title()
@@ -202,7 +224,7 @@ class KibanaWebScraper:
                     element = await page.wait_for_selector(indicator, timeout=2000)
                     if element:
                         logger.info(f"LOGIN SUCCESS: Found Kibana UI element: {indicator}")
-                        await page.screenshot(path='login_success_final.png')
+                        await self.safe_screenshot(page, 'login_success_final.png')
                         return True
                 except:
                     continue
@@ -223,7 +245,7 @@ class KibanaWebScraper:
                     if error_element:
                         error_text = await error_element.inner_text()
                         logger.error(f"Login error found: {error_text}")
-                        await page.screenshot(path='login_error_found.png')
+                        await self.safe_screenshot(page, 'login_error_found.png')
                         raise Exception(f"Login failed: {error_text}")
                 except:
                     continue
@@ -235,17 +257,15 @@ class KibanaWebScraper:
                 logger.info(f"Redirected to: {current_url}")
                 # If we're not on login page anymore, assume success
                 logger.info("Login appears successful - not on login page")
-                await page.screenshot(path='login_success_by_redirect.png')
+                await self.safe_screenshot(page, 'login_success_by_redirect.png')
                 return True
         
         # Final check
         current_url = page.url
         if "login" in current_url.lower() or "auth" in current_url.lower():
             logger.error("Login failed - still on login page after multiple attempts")
-            await page.screenshot(path='login_failed_final.png')
-            content = await page.content()
-            with open('login_failed_content.html', 'w') as f:
-                f.write(content)
+            await self.safe_screenshot(page, 'login_failed_final.png')
+            await self.safe_save_html(page, 'login_failed_content.html')
             raise Exception(f"Login failed - still on login page: {current_url}")
         else:
             logger.info("Login completed - assuming success")
@@ -287,7 +307,7 @@ class KibanaWebScraper:
             logger.info(f"Current page URL: {current_url}")
 
             if "login" in current_url.lower() or "auth" in current_url.lower():
-                await page.screenshot(path='redirected_to_login.png')
+                await self.safe_screenshot(page, 'redirected_to_login.png')
                 raise Exception(f"Got redirected to login when trying to access discover page: {current_url}")
 
             step_log("STEP: discover page URL looks good")
@@ -295,7 +315,7 @@ class KibanaWebScraper:
             # Take screenshot after navigation
             current_step = "screenshot discover_loaded.png"
             step_log(f"STEP: {current_step}")
-            await page.screenshot(path='discover_loaded.png')
+            await self.safe_screenshot(page, 'discover_loaded.png')
             step_log("STEP: screenshot complete")
 
             # Wait for data table to appear
@@ -322,12 +342,10 @@ class KibanaWebScraper:
             if not table_found:
                 current_step = "no table found - gathering debug info"
                 step_log(f"STEP: {current_step}")
-                await page.screenshot(path='no_table_found.png')
+                await self.safe_screenshot(page, 'no_table_found.png')
 
                 # Save page content for debugging
-                content = await page.content()
-                with open('discover_page_debug.html', 'w') as f:
-                    f.write(content)
+                await self.safe_save_html(page, 'discover_page_debug.html')
 
                 # Get page title and any error messages
                 page_title = await page.title()
@@ -355,7 +373,7 @@ class KibanaWebScraper:
             # Final screenshot
             current_step = "screenshot discover_ready.png"
             step_log(f"STEP: {current_step}")
-            await page.screenshot(path='discover_ready.png')
+            await self.safe_screenshot(page, 'discover_ready.png')
             step_log("STEP: discover page ready for data extraction")
 
         except Exception as e:
@@ -365,17 +383,11 @@ class KibanaWebScraper:
             logger.error(f"Exception type: {type(e).__name__}")
             logger.error(f"Exception message: {e}")
 
-            # Take error screenshot and save page content
-            try:
-                await page.screenshot(path='discover_navigation_error.png')
-            except Exception as shot_exc:
-                logger.error(f"Could not take error screenshot: {shot_exc}")
+            # Take error screenshot and save page content (best-effort, never blocks)
+            await self.safe_screenshot(page, 'discover_navigation_error.png')
+            await self.safe_save_html(page, 'discover_navigation_error.html')
 
             try:
-                content = await page.content()
-                with open('discover_navigation_error.html', 'w') as f:
-                    f.write(content)
-
                 current_url = page.url
                 page_title = await page.title()
                 logger.error(f"Navigation failed. URL: {current_url}, Title: {page_title}")
@@ -389,7 +401,7 @@ class KibanaWebScraper:
         logger.info("Extracting appointment data from page...")
         
         # Always take a screenshot before extraction for debugging
-        await page.screenshot(path='before_extraction.png')
+        await self.safe_screenshot(page, 'before_extraction.png')
         
         # Log current URL and page title
         current_url = page.url
@@ -426,12 +438,10 @@ class KibanaWebScraper:
                     table_element = tables[0]
                     logger.info("Using first table found on page")
                 else:
-                    await page.screenshot(path='no_table_elements.png')
+                    await self.safe_screenshot(page, 'no_table_elements.png')
                     
                     # Save page content for debugging
-                    content = await page.content()
-                    with open('extraction_page_debug.html', 'w') as f:
-                        f.write(content)
+                    await self.safe_save_html(page, 'extraction_page_debug.html')
                     
                     # Get all text content for debugging
                     try:
@@ -453,7 +463,7 @@ class KibanaWebScraper:
             logger.info(f"Found {len(rows)} table rows")
             
             if len(rows) < 2:  # Need at least header + 1 data row
-                await page.screenshot(path='empty_table.png')
+                await self.safe_screenshot(page, 'empty_table.png')
                 logger.warning("Table found but no data rows")
                 return []
             
@@ -503,7 +513,7 @@ class KibanaWebScraper:
             logger.info(f"Successfully extracted {len(appointments)} appointments")
             
             # Take a screenshot showing the extracted data
-            await page.screenshot(path='data_extracted.png')
+            await self.safe_screenshot(page, 'data_extracted.png')
             
             # Save extracted data for debugging
             with open('extracted_data.json', 'w') as f:
@@ -513,16 +523,11 @@ class KibanaWebScraper:
             
         except Exception as e:
             logger.error(f"Error extracting data: {e}")
-            await page.screenshot(path='extraction_error.png')
+            await self.safe_screenshot(page, 'extraction_error.png')
             
             # Always save debugging info on errors
-            try:
-                content = await page.content()
-                with open('extraction_error_page.html', 'w') as f:
-                    f.write(content)
-            except:
-                pass
-            
+            await self.safe_save_html(page, 'extraction_error_page.html')
+
             raise  # Re-raise the error so the main function knows it failed
     
     def process_appointment_data(self, raw_appointments, target_date):
@@ -845,7 +850,7 @@ class KibanaWebScraper:
                 # Check if we actually got data
                 if not raw_appointments:
                     # Take final screenshot for debugging
-                    await page.screenshot(path='final_no_data.png')
+                    await self.safe_screenshot(page, 'final_no_data.png')
                     
                     logger.error("No appointment data was extracted from the page")
                     return {
@@ -886,7 +891,7 @@ class KibanaWebScraper:
                 
                 # Take final error screenshot
                 try:
-                    await page.screenshot(path='scraping_final_error.png')
+                    await self.safe_screenshot(page, 'scraping_final_error.png')
                     current_url = page.url
                 except:
                     current_url = "Unable to get URL"
