@@ -48,51 +48,41 @@ const Dashboard = () => {
   const [loading, setLoading] = useState(true);
   const [currentTime, setCurrentTime] = useState(new Date());
 
-  // Get Pacific Time dates
-  const getPacificDate = (date = new Date()) => {
-    return new Date(date.toLocaleString("en-US", {timeZone: "America/Los_Angeles"}));
-  };
-
+  // Get today's date in Pacific timezone as YYYY-MM-DD.
+  // Uses Intl.DateTimeFormat to get real Pacific date parts rather than
+  // the old toISOString() trick which returned UTC. This matters in the
+  // evening Pacific hours when UTC has rolled over to the next day.
   const getTodayPacific = () => {
-    const today = getPacificDate();
-    return today.toISOString().split('T')[0];
+    const parts = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'America/Los_Angeles',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).format(new Date());
+    return parts; // en-CA format is already YYYY-MM-DD
   };
 
   const getTomorrowPacific = () => {
-    const tomorrow = getPacificDate();
-    tomorrow.setDate(tomorrow.getDate() + 1);
-    return tomorrow.toISOString().split('T')[0];
+    // Pacific midnight + 24 hours isn't safe across DST transitions, so we
+    // add a day to "now" before extracting the Pacific date.
+    const tomorrow = new Date();
+    tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
+    const parts = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'America/Los_Angeles',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).format(tomorrow);
+    return parts;
   };
 
+  // appointment_time_12h is stored as Pacific time by the scraper, so we just
+  // display it as-is. (Previously this function subtracted 7 hours to convert
+  // UTC to Pacific, but the scraper now handles the tz conversion.)
   const formatTime = (appointment) => {
-    let timeString = appointment.appointment_time_12h;
-    
+    const timeString = appointment.appointment_time_12h;
     if (!timeString || timeString === 'No time') return 'No time';
-    
-    try {
-      // Parse the time and subtract 7 hours to convert from UTC to Pacific
-      const [time, period] = timeString.split(' ');
-      const [hours, minutes] = time.split(':');
-      let hour24 = parseInt(hours);
-      
-      // Convert to 24-hour format
-      if (period === 'PM' && hour24 !== 12) hour24 += 12;
-      if (period === 'AM' && hour24 === 12) hour24 = 0;
-      
-      // Subtract 7 hours to convert UTC to Pacific
-      hour24 -= 7;
-      
-      // Handle day rollover
-      if (hour24 < 0) hour24 += 24;
-      
-      // Convert back to 12-hour format
-      const period12 = hour24 >= 12 ? 'PM' : 'AM';
-      const displayHour = hour24 > 12 ? hour24 - 12 : (hour24 === 0 ? 12 : hour24);
-      
-      return `${displayHour}:${minutes} ${period12}`;
-    } catch (error) {
-      return timeString; // Return original if parsing fails
-    }
+    return timeString;
   };
 
   const fetchAppointments = async () => {
