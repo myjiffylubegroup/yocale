@@ -654,9 +654,20 @@ class KibanaWebScraper:
                 logger.info(f"  '{orig}' -> {parsed}")
                 
             # Create date/time fields
-            df['appointment_date'] = df['appointment_datetime'].dt.date
-            df['appointment_time'] = df['appointment_datetime'].dt.strftime('%H:%M')
-            df['appointment_time_12h'] = df['appointment_datetime'].dt.strftime('%I:%M %p')
+            # Kibana stores timestamps in UTC. We operate in Pacific and want
+            # appointment_date/time to reflect the actual Pacific calendar
+            # date and local time, not UTC. This matters because a 5pm Pacific
+            # appointment is after midnight UTC — storing UTC-derived fields
+            # means the date would be off by one for late-afternoon bookings.
+            appt_dt = df['appointment_datetime']
+            # If the parsed values are tz-naive, assume UTC (Kibana's format)
+            if appt_dt.dt.tz is None:
+                appt_dt = appt_dt.dt.tz_localize('UTC')
+            pacific_dt = appt_dt.dt.tz_convert('America/Los_Angeles')
+
+            df['appointment_date'] = pacific_dt.dt.date
+            df['appointment_time'] = pacific_dt.dt.strftime('%H:%M')
+            df['appointment_time_12h'] = pacific_dt.dt.strftime('%I:%M %p')
         else:
             logger.error("NO VALUES WERE SUCCESSFULLY PARSED!")
             df['appointment_date'] = None
