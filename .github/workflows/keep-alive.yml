@@ -1,0 +1,37 @@
+name: Keep Alive
+
+# GitHub auto-disables scheduled workflows after 60 days of no repository
+# activity. This workflow runs weekly and makes a trivial commit to reset
+# that counter, ensuring the daily-appointments scraper keeps running.
+#
+# Root cause fix for the Nov 2025 → Apr 2026 outage where the scraper
+# silently stopped after GitHub disabled it for inactivity.
+
+on:
+  schedule:
+    # Run every Monday at 12:00 UTC
+    - cron: '0 12 * * 1'
+  workflow_dispatch: # Allow manual triggering
+
+permissions:
+  contents: write
+
+jobs:
+  keep-alive:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Update keep-alive timestamp
+        run: |
+          mkdir -p .github
+          date -u +"%Y-%m-%dT%H:%M:%SZ" > .github/last_keep_alive.txt
+
+      - name: Commit and push
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add .github/last_keep_alive.txt
+          git diff --quiet --cached || git commit -m "chore: keep-alive $(date -u +%Y-%m-%d)"
+          git push
