@@ -102,6 +102,7 @@ const Dashboard = () => {
         .select('*')
         .eq('location_business_id', LOCATION_BUSINESS_IDS[CURRENT_LOCATION])
         .in('appointment_date', [today, tomorrow])
+        .eq('booking_status_label', 'Confirmed')
         .order('appointment_time', { ascending: true });
 
       if (error) {
