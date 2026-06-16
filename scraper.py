@@ -20,14 +20,17 @@ class KibanaWebScraper:
         self.kibana_username = os.environ.get('KIBANA_USERNAME')
         self.kibana_password = os.environ.get('KIBANA_PASSWORD')
         self.supabase_url = os.environ.get('SUPABASE_URL')
-        self.supabase_key = os.environ.get('SUPABASE_ANON_KEY')
+        # Use service_role key for this trusted server-side job. The scraper
+        # writes to a table that has RLS enabled with a read-only anon policy,
+        # so writes must use service_role which bypasses RLS by design.
+        self.supabase_key = os.environ.get('SUPABASE_SERVICE_ROLE_KEY')
         
         # Validate required environment variables
         if not all([self.kibana_base_url, self.kibana_username, self.kibana_password]):
             raise Exception("Missing required Kibana environment variables: KIBANA_BASE_URL, KIBANA_USERNAME, KIBANA_PASSWORD")
         
         if not all([self.supabase_url, self.supabase_key]):
-            raise Exception("Missing required Supabase environment variables: SUPABASE_URL, SUPABASE_ANON_KEY")
+            raise Exception("Missing required Supabase environment variables: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY")
         
         # Initialize Supabase client
         self.supabase: Client = create_client(self.supabase_url, self.supabase_key)
