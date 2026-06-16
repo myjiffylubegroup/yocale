@@ -2,7 +2,7 @@ name: Daily Appointment Data Scraping
 
 on:
   schedule:
-    # Run every day at 7:00 AM UTC (adjust timezone as needed)
+    # Run hourly at the top of the hour
     - cron: '0 * * * *'
   workflow_dispatch: # Allow manual triggering
 
@@ -40,7 +40,7 @@ jobs:
         KIBANA_USERNAME: ${{ secrets.KIBANA_USERNAME }}
         KIBANA_PASSWORD: ${{ secrets.KIBANA_PASSWORD }}
         SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-        SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+        SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
       run: python scraper.py
       
     - name: Upload debug artifacts on failure
