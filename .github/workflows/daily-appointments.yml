@@ -1,105 +1,198 @@
 name: Daily Appointment Data Scraping
 
+# ---------------------------------------------------------------------------
+# TWO ENTITIES, TWO JOBS (deliberate duplication — see note)
+#
+# PCJL and Najjar are separate franchise entities whose Yocale data lives in
+# the SAME Kibana space (jiffy-lube-gfl, GFL's account), partitioned by
+# credential via document-level security. Same space slug, same saved view,
+# same index pattern — only the login differs. Each entity writes to its own
+# Supabase project.
+#
+# The jobs are duplicated rather than matrixed on purpose: GitHub's `secrets`
+# context is NOT available in a `strategy.matrix` block, so a matrix would
+# require renaming PCJL's live secrets to a prefixed scheme. Duplication keeps
+# a mistake on the Najjar job from taking PCJL down.
+# >>> If you change the scraper step in one job, change it in the other. <<<
+#
+# Najjar is intentionally NOT on the schedule yet — dispatch-only until a dry
+# run confirms its credential returns only Najjar's stores.
+# ---------------------------------------------------------------------------
+
 on:
   schedule:
     # Run hourly at the top of the hour
     - cron: '0 * * * *'
-  workflow_dispatch: # Allow manual triggering
+  workflow_dispatch:
+    inputs:
+      entity:
+        description: 'Which entity to run'
+        type: choice
+        options:
+          - pcjl
+          - najjar
+          - both
+        default: pcjl
+      dry_run:
+        description: 'Dry run — extract and log locations, write NOTHING to the database'
+        type: boolean
+        default: false
 
 jobs:
-  scrape-appointments:
+  # =========================================================================
+  # PCJL — live. Runs on the schedule and on dispatch.
+  # =========================================================================
+  scrape-pcjl:
+    name: Scrape PCJL
+    if: >-
+      github.event_name == 'schedule' ||
+      github.event.inputs.entity == 'pcjl' ||
+      github.event.inputs.entity == 'both'
     runs-on: ubuntu-latest
-    
+
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
-      
+
     - name: Set up Python
       uses: actions/setup-python@v4
       with:
         python-version: '3.11'
-        
+
     - name: Cache dependencies
       uses: actions/cache@v3
       with:
         path: ~/.cache/pip
         key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}
-        
+
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
         pip install -r requirements.txt
-        
+
     - name: Install Playwright browsers
       run: |
         playwright install chromium
-        
-    - name: Run daily scraping
+
+    - name: Run scraping (PCJL)
       env:
         KIBANA_BASE_URL: ${{ secrets.KIBANA_BASE_URL }}
         KIBANA_USERNAME: ${{ secrets.KIBANA_USERNAME }}
         KIBANA_PASSWORD: ${{ secrets.KIBANA_PASSWORD }}
         SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
         SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        # github.event.inputs is null on scheduled runs => '0' => never a dry run.
+        DRY_RUN: ${{ github.event.inputs.dry_run == 'true' && '1' || '0' }}
       run: python scraper.py
-      
+
     - name: Upload debug artifacts on failure
       if: failure()
       uses: actions/upload-artifact@v4
       with:
-        name: debug-screenshots-${{ github.run_number }}
+        name: pcjl-debug-${{ github.run_number }}
         path: |
           *.png
           *.html
           *.json
           *.txt
         retention-days: 7
-        
+
     - name: Upload debug artifacts on success (limited)
       if: success()
       uses: actions/upload-artifact@v4
       with:
-        name: success-screenshots-${{ github.run_number }}
+        name: pcjl-success-${{ github.run_number }}
         path: |
           login_success*.png
           discover_ready.png
           data_extracted.png
         retention-days: 3
         if-no-files-found: ignore
-        
-    - name: Notify on failure
-      if: failure()
-      uses: actions/github-script@v7
-      with:
-        script: |
-          const fs = require('fs');
-          
-          // Try to read any error logs or debug info
-          let errorDetails = 'Daily appointment scraping failed';
-          
-          try {
-            // Check if there are any debug files to help with troubleshooting
-            const files = fs.readdirSync('.');
-            const debugFiles = files.filter(f => f.endsWith('.html') || f.endsWith('.txt'));
-            
-            if (debugFiles.length > 0) {
-              errorDetails += `. Debug files created: ${debugFiles.join(', ')}`;
-            }
-          } catch (e) {
-            // Ignore file reading errors
-          }
-          
-          core.setFailed(errorDetails);
-          
+
     - name: Summary
       if: always()
       run: |
-        echo "## Scraping Summary" >> $GITHUB_STEP_SUMMARY
+        echo "## PCJL Scraping Summary" >> $GITHUB_STEP_SUMMARY
         echo "- **Date:** $(date)" >> $GITHUB_STEP_SUMMARY
         echo "- **Status:** ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
-        
-        # List any debug files created
-        if ls *.png *.html *.json *.txt 2>/dev/null; then
-          echo "- **Debug files created:**" >> $GITHUB_STEP_SUMMARY
-          ls *.png *.html *.json *.txt 2>/dev/null | head -10 | sed 's/^/  - /' >> $GITHUB_STEP_SUMMARY
-        fi
+        echo "- **Dry run:** ${{ github.event.inputs.dry_run || 'false' }}" >> $GITHUB_STEP_SUMMARY
+
+  # =========================================================================
+  # NAJJAR — dispatch-only until verified.
+  # To put it on the schedule later, add to the `if:` below:
+  #     github.event_name == 'schedule' ||
+  # =========================================================================
+  scrape-najjar:
+    name: Scrape Najjar
+    if: >-
+      github.event_name == 'workflow_dispatch' &&
+      (github.event.inputs.entity == 'najjar' ||
+       github.event.inputs.entity == 'both')
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+
+    - name: Cache dependencies
+      uses: actions/cache@v3
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+
+    - name: Install Playwright browsers
+      run: |
+        playwright install chromium
+
+    - name: Run scraping (Najjar)
+      env:
+        # Same deployment and space as PCJL — only the credential differs.
+        KIBANA_BASE_URL: ${{ secrets.KIBANA_BASE_URL }}
+        KIBANA_USERNAME: ${{ secrets.NAJJAR_KIBANA_USERNAME }}
+        KIBANA_PASSWORD: ${{ secrets.NAJJAR_KIBANA_PASSWORD }}
+        SUPABASE_URL: ${{ secrets.NAJJAR_SUPABASE_URL }}
+        SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.NAJJAR_SUPABASE_SERVICE_ROLE_KEY }}
+        DRY_RUN: ${{ github.event.inputs.dry_run == 'true' && '1' || '0' }}
+      run: python scraper.py
+
+    - name: Upload debug artifacts on failure
+      if: failure()
+      uses: actions/upload-artifact@v4
+      with:
+        name: najjar-debug-${{ github.run_number }}
+        path: |
+          *.png
+          *.html
+          *.json
+          *.txt
+        retention-days: 7
+
+    - name: Upload debug artifacts on success (limited)
+      if: success()
+      uses: actions/upload-artifact@v4
+      with:
+        name: najjar-success-${{ github.run_number }}
+        path: |
+          login_success*.png
+          discover_ready.png
+          data_extracted.png
+        retention-days: 3
+        if-no-files-found: ignore
+
+    - name: Summary
+      if: always()
+      run: |
+        echo "## Najjar Scraping Summary" >> $GITHUB_STEP_SUMMARY
+        echo "- **Date:** $(date)" >> $GITHUB_STEP_SUMMARY
+        echo "- **Status:** ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **Dry run:** ${{ github.event.inputs.dry_run || 'false' }}" >> $GITHUB_STEP_SUMMARY
