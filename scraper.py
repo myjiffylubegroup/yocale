@@ -744,7 +744,30 @@ class KibanaWebScraper:
         if df.empty:
             logger.info("No data to save")
             return
-            
+
+        # DRY_RUN: extract and report, but write nothing. Used to verify which
+        # locations a given Kibana credential can actually see BEFORE pointing
+        # the scraper at a live table. Kibana partitions this shared space by
+        # credential (document-level security), so this is how we confirm an
+        # entity's login only returns that entity's stores.
+        # Unset/absent => normal behavior, byte-for-byte unchanged.
+        if os.environ.get('DRY_RUN') == '1':
+            logger.info("=" * 60)
+            logger.info(f"DRY RUN — {len(df)} records extracted, NOTHING will be saved")
+            logger.info("=" * 60)
+            try:
+                counts = df.groupby(
+                    ['location_business_id', 'location_business_name'],
+                    dropna=False
+                ).size()
+                logger.info("Distinct locations visible to this credential:")
+                for (biz_id, biz_name), n in counts.items():
+                    logger.info(f"  location_business_id={biz_id} | {biz_name} | {n} rows")
+            except Exception as e:
+                logger.warning(f"DRY RUN — could not summarize locations: {e}")
+            logger.info("=" * 60)
+            return
+
         try:
             # Convert DataFrame to list of dictionaries
             data_to_insert = df.to_dict('records')
