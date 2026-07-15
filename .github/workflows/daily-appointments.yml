@@ -44,10 +44,7 @@ jobs:
   # =========================================================================
   scrape-pcjl:
     name: Scrape PCJL
-    if: >-
-      github.event_name == 'schedule' ||
-      github.event.inputs.entity == 'pcjl' ||
-      github.event.inputs.entity == 'both'
+    if: ${{ github.event_name == 'schedule' || github.event.inputs.entity == 'pcjl' || github.event.inputs.entity == 'both' }}
     runs-on: ubuntu-latest
 
     steps:
@@ -124,10 +121,7 @@ jobs:
   # =========================================================================
   scrape-najjar:
     name: Scrape Najjar
-    if: >-
-      github.event_name == 'workflow_dispatch' &&
-      (github.event.inputs.entity == 'najjar' ||
-       github.event.inputs.entity == 'both')
+    if: ${{ github.event_name == 'workflow_dispatch' && (github.event.inputs.entity == 'najjar' || github.event.inputs.entity == 'both') }}
     runs-on: ubuntu-latest
 
     steps:
