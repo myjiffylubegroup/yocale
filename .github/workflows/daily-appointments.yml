@@ -15,8 +15,8 @@ name: Daily Appointment Data Scraping
 # a mistake on the Najjar job from taking PCJL down.
 # >>> If you change the scraper step in one job, change it in the other. <<<
 #
-# Najjar is intentionally NOT on the schedule yet — dispatch-only until a dry
-# run confirms its credential returns only Najjar's stores.
+# Both entities are live on the hourly schedule. Each writes to its own
+# Supabase project; a scheduled run fires both jobs in parallel.
 # ---------------------------------------------------------------------------
 
 on:
@@ -115,13 +115,12 @@ jobs:
         echo "- **Dry run:** ${{ github.event.inputs.dry_run || 'false' }}" >> $GITHUB_STEP_SUMMARY
 
   # =========================================================================
-  # NAJJAR — dispatch-only until verified.
-  # To put it on the schedule later, add to the `if:` below:
-  #     github.event_name == 'schedule' ||
+  # NAJJAR — live. Runs on the schedule and on dispatch.
+  # Writes to NAJJAR-GREETS (bsubveplzmippvkogqhf).
   # =========================================================================
   scrape-najjar:
     name: Scrape Najjar
-    if: ${{ github.event_name == 'workflow_dispatch' && (github.event.inputs.entity == 'najjar' || github.event.inputs.entity == 'both') }}
+    if: ${{ github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && (github.event.inputs.entity == 'najjar' || github.event.inputs.entity == 'both')) }}
     runs-on: ubuntu-latest
 
     steps:
