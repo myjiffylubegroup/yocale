@@ -277,7 +277,37 @@ class KibanaWebScraper:
     async def navigate_to_discover(self, page, target_date=None):
         """Navigate to the discover page with 15-day appointment data"""
         # Use the 15-day rolling window URL which is more reliable
-        discover_url = f"{self.kibana_base_url}/app/discover#/view/84b881a0-6b52-11f0-89e0-f9470fca93e5?_g=(filters%3A!()%2CrefreshInterval%3A(pause%3A!t%2Cvalue%3A0)%2Ctime%3A(from%3Anow-15d%2Cto%3Anow))"
+        #
+        # _g = global state: the time picker. Filters on utcCreatedDateTime
+        #      (when the booking was MADE), which is the index's time field.
+        #
+        # _a = app state: overrides the saved search's own settings for THIS
+        #      request only. The saved search (84b881a0..., "Historical
+        #      Appointments-Rolling 7") lives in the shared jiffy-lube-gfl
+        #      space and is used by multiple entities — we must NOT edit it.
+        #      Passing _a here overrides only `columns`, in-memory, per request.
+        #      Sort and index pattern are still inherited from the saved view.
+        #
+        #      location.id / location.name are appended LAST so that if the
+        #      override ever misbehaves, the original 10 columns are still
+        #      first and the existing mapping keeps working.
+        #
+        #      Why we need them: location.businessId is the *parent company*.
+        #      For PCJL it happens to be 1:1 with a store, but for entities
+        #      with one business and many shops (e.g. Najjar: one businessId
+        #      217200 across 30 stores) it does not identify the store at all.
+        #      location.id is the actual per-store calendar.
+        columns = (
+            "bookingId%2Clocation.businessName%2Clocation.businessId%2C"
+            "client.lastName%2CisGoogleBooking%2Coffering.name%2C"
+            "client.firstName%2Cclient.email%2CbookingStatus.label%2C"
+            "startDateTime%2Clocation.id%2Clocation.name"
+        )
+        discover_url = (
+            f"{self.kibana_base_url}/app/discover#/view/84b881a0-6b52-11f0-89e0-f9470fca93e5"
+            f"?_g=(filters%3A!()%2CrefreshInterval%3A(pause%3A!t%2Cvalue%3A0)%2Ctime%3A(from%3Anow-15d%2Cto%3Anow))"
+            f"&_a=(columns%3A!({columns}))"
+        )
 
         # Track where we are so the exception handler can report the failing step
         nav_start = time.time()
@@ -578,6 +608,19 @@ class KibanaWebScraper:
         df['client_email'] = df['client.email']
         df['booking_status_label'] = df['bookingStatus.label']
         df['start_date_time'] = df['startDateTime']
+
+        # location.id / location.name come from the _a column override, not the
+        # saved view. Mapped DEFENSIVELY: if the override ever stops taking
+        # effect, these go null rather than raising KeyError and killing the
+        # run. A null location_id degrades the appointment lookup; a KeyError
+        # would take down the whole pipeline for every entity.
+        for src, dest in (('location.id', 'location_id'), ('location.name', 'location_name')):
+            if src in df.columns:
+                df[dest] = df[src]
+            else:
+                logger.warning(f"Column '{src}' not present — writing NULL {dest}. "
+                               f"The _a column override may not have applied.")
+                df[dest] = None
         
         # Create customer name
         df['customer_name'] = (df['client_first_name'].fillna('') + ' ' + df['client_last_name'].fillna('')).str.strip()
@@ -702,6 +745,8 @@ class KibanaWebScraper:
             'time_column',
             'location_business_name',
             'location_business_id',
+            'location_id',
+            'location_name',
             'client_last_name',
             'is_google_booking',
             'offering_name',
@@ -757,12 +802,12 @@ class KibanaWebScraper:
             logger.info("=" * 60)
             try:
                 counts = df.groupby(
-                    ['location_business_id', 'location_business_name'],
+                    ['location_business_id', 'location_id', 'location_name'],
                     dropna=False
                 ).size()
                 logger.info("Distinct locations visible to this credential:")
-                for (biz_id, biz_name), n in counts.items():
-                    logger.info(f"  location_business_id={biz_id} | {biz_name} | {n} rows")
+                for (biz_id, loc_id, loc_name), n in counts.items():
+                    logger.info(f"  business={biz_id} | location.id={loc_id} | {loc_name} | {n} rows")
             except Exception as e:
                 logger.warning(f"DRY RUN — could not summarize locations: {e}")
             logger.info("=" * 60)
