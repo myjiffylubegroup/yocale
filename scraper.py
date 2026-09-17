@@ -304,11 +304,22 @@ class KibanaWebScraper:
             "client.firstName%2Cclient.email%2CbookingStatus.label%2C"
             "startDateTime%2Clocation.id%2Clocation.name"
         )
-        # Time window is overridable for diagnostics via KIBANA_TIME_FROM /
-        # KIBANA_TIME_TO (Kibana date-math, e.g. now-1y / now+1y). Unset means
-        # now-15d..now -- byte-for-byte the original behavior.
+        # The saved view's time field is startDateTime -- the APPOINTMENT time,
+        # not the booking time. So the upper bound must extend into the future or
+        # every upcoming appointment is invisible, which is most of what a booking
+        # system holds. Do NOT set this back to `now`.
+        #
+        # That was the 2026-09 outage: with to:now the view only ever matched an
+        # appointment in the gap between its start time passing and its document
+        # ageing out of the index. The scrape survived on that residue for months,
+        # and the moment it drained the view returned zero rows and every run
+        # failed with "No data table found" -- which reads like a broken selector
+        # and is really an empty result set.
+        #
+        # Overridable for diagnostics via KIBANA_TIME_FROM / KIBANA_TIME_TO
+        # (Kibana date math). Both are blank on scheduled runs.
         time_from = quote(os.environ.get('KIBANA_TIME_FROM') or 'now-15d', safe='')
-        time_to = quote(os.environ.get('KIBANA_TIME_TO') or 'now', safe='')
+        time_to = quote(os.environ.get('KIBANA_TIME_TO') or 'now+1y', safe='')
         discover_url = (
             f"{self.kibana_base_url}/app/discover#/view/84b881a0-6b52-11f0-89e0-f9470fca93e5"
             f"?_g=(filters%3A!()%2CrefreshInterval%3A(pause%3A!t%2Cvalue%3A0)%2Ctime%3A(from%3A{time_from}%2Cto%3A{time_to}))"

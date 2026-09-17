@@ -42,7 +42,7 @@ on:
         type: string
         default: ''
       time_to:
-        description: 'Kibana time range end (date math, e.g. now+1y). Blank = now'
+        description: 'Kibana time range end (date math, e.g. now+1y). Blank = now+1y'
         type: string
         default: ''
 
