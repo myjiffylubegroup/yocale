@@ -37,6 +37,14 @@ on:
         description: 'Dry run — extract and log locations, write NOTHING to the database'
         type: boolean
         default: false
+      time_from:
+        description: 'Kibana time range start (date math, e.g. now-1y). Blank = now-15d'
+        type: string
+        default: ''
+      time_to:
+        description: 'Kibana time range end (date math, e.g. now+1y). Blank = now+1y'
+        type: string
+        default: ''
 
 jobs:
   # =========================================================================
@@ -80,6 +88,9 @@ jobs:
         SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         # github.event.inputs is null on scheduled runs => '0' => never a dry run.
         DRY_RUN: ${{ github.event.inputs.dry_run == 'true' && '1' || '0' }}
+        # Blank on scheduled runs => scraper falls back to now-15d..now.
+        KIBANA_TIME_FROM: ${{ github.event.inputs.time_from }}
+        KIBANA_TIME_TO: ${{ github.event.inputs.time_to }}
       run: python scraper.py
 
     - name: Upload debug artifacts on failure
@@ -156,6 +167,9 @@ jobs:
         SUPABASE_URL: ${{ secrets.NAJJAR_SUPABASE_URL }}
         SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.NAJJAR_SUPABASE_SERVICE_ROLE_KEY }}
         DRY_RUN: ${{ github.event.inputs.dry_run == 'true' && '1' || '0' }}
+        # Blank on scheduled runs => scraper falls back to now-15d..now.
+        KIBANA_TIME_FROM: ${{ github.event.inputs.time_from }}
+        KIBANA_TIME_TO: ${{ github.event.inputs.time_to }}
       run: python scraper.py
 
     - name: Upload debug artifacts on failure
