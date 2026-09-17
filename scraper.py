@@ -304,22 +304,31 @@ class KibanaWebScraper:
             "client.firstName%2Cclient.email%2CbookingStatus.label%2C"
             "startDateTime%2Clocation.id%2Clocation.name"
         )
-        # The saved view's time field is startDateTime -- the APPOINTMENT time,
-        # not the booking time. So the upper bound must extend into the future or
-        # every upcoming appointment is invisible, which is most of what a booking
-        # system holds. Do NOT set this back to `now`.
+        # The saved view's time field is the booking CREATION time -- the column
+        # Discover labels "Time", which lands in daily_appointments.time_column.
+        # It is NOT startDateTime. Every row's time_column precedes its
+        # start_date_time, because you book before the appointment happens. So
+        # this window selects documents by WHEN THE BOOKING WAS MADE, and a
+        # future-dated appointment booked last week is inside now-15d..now.
         #
-        # That was the 2026-09 outage: with to:now the view only ever matched an
-        # appointment in the gap between its start time passing and its document
-        # ageing out of the index. The scrape survived on that residue for months,
-        # and the moment it drained the view returned zero rows and every run
-        # failed with "No data table found" -- which reads like a broken selector
-        # and is really an empty result set.
+        # Widening `to` past now therefore does nothing: creation times are never
+        # in the future. now-15d..now is correct and deliberate.
+        #
+        # If this view ever returns zero rows, do NOT reach for the window first.
+        # Check whether ANY new documents are being indexed, by widening `from`
+        # (KIBANA_TIME_FROM=now-1y) and looking at the newest time_column value.
+        # In the 2026-09 outage the Yocale -> Elastic feed stopped on Aug 29-30
+        # and nothing was indexed afterwards; the 15-day window then aged out the
+        # last document and every run began failing with "No data table found",
+        # which reads like a broken selector but is really an empty result set.
+        # The failure date follows from the arithmetic: PCJL's last document was
+        # Aug 29 23:11 and its last green run was Sep 13; Najjar's were Aug 30
+        # 14:47 and Sep 14.
         #
         # Overridable for diagnostics via KIBANA_TIME_FROM / KIBANA_TIME_TO
         # (Kibana date math). Both are blank on scheduled runs.
         time_from = quote(os.environ.get('KIBANA_TIME_FROM') or 'now-15d', safe='')
-        time_to = quote(os.environ.get('KIBANA_TIME_TO') or 'now+1y', safe='')
+        time_to = quote(os.environ.get('KIBANA_TIME_TO') or 'now', safe='')
         discover_url = (
             f"{self.kibana_base_url}/app/discover#/view/84b881a0-6b52-11f0-89e0-f9470fca93e5"
             f"?_g=(filters%3A!()%2CrefreshInterval%3A(pause%3A!t%2Cvalue%3A0)%2Ctime%3A(from%3A{time_from}%2Cto%3A{time_to}))"
