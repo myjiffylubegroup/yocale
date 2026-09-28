@@ -1,6 +1,5 @@
-playwright==1.40.0
-pandas==2.1.4
-numpy==1.24.3
+# csv_feed.py only needs an HTTP client and the Supabase client. Playwright,
+# pandas, numpy and beautifulsoup4 were for scraper.py, which drove a browser
+# through Kibana's UI; Yocale retired that site in September 2026.
+requests==2.32.3
 supabase==2.7.4
-python-dotenv==1.0.0
-beautifulsoup4==4.12.2
