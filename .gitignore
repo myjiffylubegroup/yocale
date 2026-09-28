@@ -1,0 +1,11 @@
+# Feed downloads: real customer names and emails. Never commit these.
+*.csv
+
+.venv/
+__pycache__/
+*.pyc
+
+# Debug artifacts left by the old Kibana scraper
+*.png
+*.html
+failed_insert_data.json
