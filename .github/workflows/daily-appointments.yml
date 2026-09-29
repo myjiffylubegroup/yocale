@@ -26,9 +26,12 @@ name: Daily Appointment Data Scraping
 
 on:
   schedule:
-    # Run hourly at the top of the hour. Yocale refreshes the file every 30
-    # minutes, so hourly sits comfortably inside their cache cycle.
-    - cron: '0 * * * *'
+    # Hourly, but deliberately NOT at :00. Yocale rebuilds the file every 30
+    # minutes, and a request that arrives mid-rebuild can hang for ~45s and
+    # then be dropped (RemoteDisconnected) — which is how the 06:27 and 13:35
+    # runs on 2026-09-29 failed while a cached response answered in 1.1s.
+    # Asking at :20 aims between their rebuilds; csv_feed.py also retries.
+    - cron: '20 * * * *'
   workflow_dispatch:
     inputs:
       entity:

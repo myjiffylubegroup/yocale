@@ -38,6 +38,7 @@ import io
 import logging
 import os
 import sys
+import time
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 
@@ -52,6 +53,8 @@ DEFAULT_USER = "jl-pcjl-reports"
 KEYCHAIN_SERVICE = "yocale-csv-feed"
 PACIFIC = ZoneInfo("America/Los_Angeles")
 UPSERT_CHUNK = 500
+FETCH_ATTEMPTS = 4
+FETCH_BACKOFF_SECONDS = 20
 
 # CSV header -> our column. The arrow characters are Yocale's, not a typo.
 COLUMNS = {
@@ -88,6 +91,45 @@ def keychain_password(account):
         return None
 
 
+def fetch_with_retries(url, auth):
+    """GET the feed, retrying the failures that are Yocale's cache, not ours.
+
+    Yocale regenerates the file every 30 minutes, and a request that lands
+    while it is being rebuilt can hang and then be dropped: the scheduled runs
+    at 2026-09-29 06:27 and 13:35 both waited ~47s and died on
+    RemoteDisconnected, while a run that got a cached copy answered in 1.1s.
+    The job fires at the top of the hour, which is exactly when a 30-minute
+    cache is most likely to be stale, so this will recur.
+
+    Connection drops, timeouts and 5xx are retried. A 401/403 is not — those
+    are settled facts about the credential or their rules, and hammering them
+    helps nobody.
+    """
+    last_error = None
+    for attempt in range(1, FETCH_ATTEMPTS + 1):
+        try:
+            response = requests.get(url, auth=auth, timeout=(15, 180))
+            if response.status_code >= 500:
+                last_error = f"HTTP {response.status_code}"
+                logger.warning("Attempt %d/%d: %s", attempt, FETCH_ATTEMPTS, last_error)
+            else:
+                return response
+        except (requests.ConnectionError, requests.Timeout) as error:
+            last_error = f"{type(error).__name__}: {error}"
+            logger.warning("Attempt %d/%d: %s", attempt, FETCH_ATTEMPTS, last_error)
+
+        if attempt < FETCH_ATTEMPTS:
+            delay = FETCH_BACKOFF_SECONDS * attempt
+            logger.info("Retrying in %ds", delay)
+            time.sleep(delay)
+
+    raise SystemExit(
+        f"Feed unreachable after {FETCH_ATTEMPTS} attempts ({last_error}). "
+        "If this persists across runs, the feed itself is down — check whether "
+        "the URL serves from a browser before assuming it is our side."
+    )
+
+
 def fetch_csv():
     url = os.environ.get("YOCALE_CSV_URL") or DEFAULT_URL
     user = os.environ.get("YOCALE_CSV_USER") or DEFAULT_USER
@@ -99,7 +141,7 @@ def fetch_csv():
         )
 
     logger.info("Fetching %s", url)
-    response = requests.get(url, auth=(user, password), timeout=120)
+    response = fetch_with_retries(url, (user, password))
 
     # Both of these were seen while the feed was being set up, so the messages
     # say what each one actually meant. 401: the login was rejected — note the
