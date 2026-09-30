@@ -28,8 +28,13 @@ Environment:
   YOCALE_CSV_USER             Basic Auth username (PCJL: jl-pcjl-reports)
   YOCALE_CSV_PASSWORD         Basic Auth password
   SUPABASE_URL                target project
-  SUPABASE_SERVICE_ROLE_KEY   service_role: daily_appointments has RLS with a
-                              read-only anon policy, so writes must bypass it
+  SUPABASE_SERVICE_ROLE_KEY   service_role: this loader writes, and `anon`
+                              holds SELECT only on daily_appointments (the
+                              Yocale wallboard's read). service_role is also
+                              BYPASSRLS, so the table's read-only anon policy
+                              never applies to it. NB that policy was inert
+                              until RLS was enabled on 2026-09-29 -- see
+                              supabase/sql/turbo_enable_rls_on_inert_policy_tables.sql
   DRY_RUN=1                   fetch and summarize, write nothing
 """
 
