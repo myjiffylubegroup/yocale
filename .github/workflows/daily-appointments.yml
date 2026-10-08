@@ -18,10 +18,10 @@ name: Daily Appointment Data Scraping
 # Duplication keeps a mistake on the Najjar job from taking PCJL down.
 # >>> If you change the feed step in one job, change it in the other. <<<
 #
-# Najjar is NOT live yet: Yocale has only issued a PCJL feed
-# (/reports/pcjl/appointments-daily.csv). Its job runs on dispatch only, and
-# needs NAJJAR_YOCALE_CSV_URL / _USER / _PASSWORD set once Yocale provides
-# them. Najjar's own Kibana feed is dead in the meantime.
+# Najjar went live 2026-10-08 on its own feed
+# (/reports/najjar/appointments-daily.csv, user jl-najjar-reports), set in
+# NAJJAR_YOCALE_CSV_URL / _USER / _PASSWORD. All 32 of its stores are in
+# Southern California, so the loader's Pacific localization holds for both.
 # ---------------------------------------------------------------------------
 
 on:
@@ -89,12 +89,12 @@ jobs:
         echo "- **Dry run:** ${{ github.event.inputs.dry_run || 'false' }}" >> $GITHUB_STEP_SUMMARY
 
   # =========================================================================
-  # NAJJAR — dispatch only until Yocale issues a Najjar feed URL and login.
+  # NAJJAR — live. Runs on the schedule and on dispatch.
   # Writes to NAJJAR-GREETS (bsubveplzmippvkogqhf).
   # =========================================================================
   feed-najjar:
     name: Load Najjar feed
-    if: ${{ github.event_name == 'workflow_dispatch' && (github.event.inputs.entity == 'najjar' || github.event.inputs.entity == 'both') }}
+    if: ${{ github.event_name == 'schedule' || github.event.inputs.entity == 'najjar' || github.event.inputs.entity == 'both' }}
     runs-on: ubuntu-latest
 
     steps:
